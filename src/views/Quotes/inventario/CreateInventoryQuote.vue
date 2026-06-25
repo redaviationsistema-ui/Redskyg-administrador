@@ -265,6 +265,13 @@ async function updateItemCondition(item) {
   await saveEditedItems();
 }
 
+function handleItemCdInput(item) {
+  Object.assign(item, applyCoreValueRules({
+    ...item,
+    cd: normalizeCd(item.cd),
+  }));
+}
+
 async function updateItemValue(item) {
   Object.assign(item, normalizeQuoteItem(item));
   await saveEditedItems();
@@ -1317,6 +1324,7 @@ const generatePDF = async () => {
                   v-model="item.cd"
                   :list="`conditionOptions-${index}`"
                   placeholder="CD"
+                  @input="handleItemCdInput(item)"
                   @change="updateItemCondition(item)"
                   @blur="updateItemCondition(item)"
                 />

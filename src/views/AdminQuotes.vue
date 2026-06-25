@@ -221,11 +221,24 @@ function editPreviewQuote() {
 
 function buildPdfEditorState(quote) {
   const savedBreakdownRows = quote.calculation_snapshot?.pdfBreakdownRows;
+  const cleanedBreakdownRows = Array.isArray(savedBreakdownRows)
+    ? savedBreakdownRows
+        .map((row) => ({
+          label: row.label || "Concept",
+          value: Number(row.value || 0),
+        }))
+    : [];
   const breakdownRows = Array.isArray(savedBreakdownRows) && savedBreakdownRows.length
-    ? savedBreakdownRows.map((row) => ({
-        label: row.label || "Concept",
-        value: Number(row.value || 0),
-      }))
+    ? cleanedBreakdownRows.length
+      ? cleanedBreakdownRows
+      : [
+          { label: "Flight Cost", value: Number(quote.flight_cost_usd || 0) },
+          { label: "Overnight Crew", value: Number(quote.overnight_cost_usd || 0) },
+          {
+            label: "Operational Expenses",
+            value: Number(quote.operational_expenses_usd || 0),
+          },
+        ]
     : [
         { label: "Flight Cost", value: Number(quote.flight_cost_usd || 0) },
         { label: "Overnight Crew", value: Number(quote.overnight_cost_usd || 0) },

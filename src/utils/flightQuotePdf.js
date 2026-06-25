@@ -14,6 +14,8 @@ const PAGE = {
   footerY: 287,
 };
 
+const FIRST_PAGE_CONTENT_MAX_Y = 278;
+
 const COLORS = {
   ink: [15, 23, 42],
   steel: [71, 85, 105],
@@ -96,10 +98,26 @@ function formatDate(value = new Date()) {
   return Number.isNaN(date.getTime()) ? "-" : date.toISOString().split("T")[0];
 }
 
+function formatDocumentDate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  })
+    .format(date)
+    .replace(/ /g, " ")
+    .toUpperCase();
+}
+
 function formatMoney(value = 0) {
   return `$${Number(value || 0).toLocaleString("en-US", {
-    maximumFractionDigits: 0,
-    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
   })}`;
 }
 
@@ -308,9 +326,33 @@ function getQuoteCostRows(quote, customerRoutes) {
   const customRows = quote?.calculation_snapshot?.pdfBreakdownRows;
 
   if (Array.isArray(customRows) && customRows.length) {
-    return customRows
+    const filteredRows = customRows
       .filter((row) => String(row?.label || "").trim())
       .map((row) => [String(row.label).trim(), Number(row.value || 0)]);
+
+    if (filteredRows.length) {
+      const hasLabel = (pattern) =>
+        filteredRows.some(([label]) => pattern.test(String(label || "")));
+
+      const normalizedRows = [...filteredRows];
+
+      if (!hasLabel(/flight\s*cost/i) && Number(quote?.flight_cost_usd || 0) > 0) {
+        normalizedRows.unshift(["Flight Cost", Number(quote.flight_cost_usd || 0)]);
+      }
+
+      if (!hasLabel(/overnight/i) && Number(quote?.overnight_cost_usd || 0) > 0) {
+        normalizedRows.push(["Overnight Crew", Number(quote.overnight_cost_usd || 0)]);
+      }
+
+      if (!hasLabel(/operational/i) && Number(quote?.operational_expenses_usd || 0) > 0) {
+        normalizedRows.push([
+          "Operational Expenses",
+          Number(quote.operational_expenses_usd || 0),
+        ]);
+      }
+
+      return normalizedRows;
+    }
   }
 
   if (isSavedFlightQuote(quote)) {
@@ -361,9 +403,9 @@ function drawTextPair(doc, label, value, x, y, width = 70) {
 
 function drawTopBand(doc) {
   doc.setFillColor(...COLORS.accent);
-  doc.rect(0, 0, PAGE.width, 12, "F");
+  doc.rect(0, 0, PAGE.width, 6, "F");
   doc.setFillColor(...COLORS.gold);
-  doc.rect(0, 12, PAGE.width, 1.3, "F");
+  doc.rect(0, 6, PAGE.width, 0.9, "F");
 }
 
 function drawSideLabel(doc, label) {
@@ -384,6 +426,12 @@ function drawFooter(doc) {
   doc.text(`Page ${doc.getCurrentPageInfo().pageNumber} of ${doc.getNumberOfPages()}`, 184, PAGE.footerY, {
     align: "right",
   });
+}
+
+function prepareContinuationPage(doc) {
+  doc.addPage();
+  drawTopBand(doc);
+  drawSideLabel(doc, "RED SKY GROUP PRIVATE AVIATION");
 }
 
 function addPageFooters(doc) {
@@ -422,12 +470,12 @@ function drawInfoCard(doc, title, rows, x, y, width, height) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...COLORS.ink);
-  doc.text(title, x + 6, y + 10);
+  doc.text(title, x + 6, y + 8.5);
 
-  let rowY = y + 22;
+  let rowY = y + 17;
   rows.forEach(([label, value]) => {
     const usedLines = drawTextPair(doc, label, value, x + 6, rowY, width - 12);
-    rowY += 8 + usedLines * 4;
+    rowY += 6.5 + usedLines * 3.2;
   });
 }
 
@@ -437,6 +485,40 @@ function addLogo(doc, logo, x, y, width) {
   const ratio = logo.naturalHeight / logo.naturalWidth;
   const height = width * ratio;
   doc.addImage(logo, "PNG", x, y, width, height);
+}
+
+function drawCompactQuoteHeader(doc, logo, quote) {
+  const headerX = 20;
+  const headerY = 10.5;
+  const headerWidth = 170;
+  const headerHeight = 14.5;
+  const logoWidth = 40;
+  const titleX = 63;
+
+  addLogo(doc, logo, headerX, headerY - 4.1, logoWidth);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(...COLORS.ink);
+  doc.text("Executive Flight Quote", titleX, headerY + 5.8);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.2);
+  doc.setTextColor(...COLORS.steel);
+  doc.text("Professional Private Aviation", titleX, headerY + 11.4);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...COLORS.ink);
+  doc.text(`Reservation • ${formatDocumentDate(quote?.created_at || new Date())}`, 190, headerY + 7.9, {
+    align: "right",
+  });
+
+  doc.setDrawColor(...COLORS.line);
+  doc.setLineWidth(0.35);
+  doc.line(headerX, headerY + headerHeight + 2.1, headerX + headerWidth, headerY + headerHeight + 2.1);
+
+  return headerY + headerHeight + 2.1;
 }
 
 function drawTermsPageHeader(doc, logo) {
@@ -511,37 +593,7 @@ export async function generateFlightQuotePdf(quote) {
   const logo = await loadLogo();
 
   drawTopBand(doc);
-  drawSideLabel(doc, "RED SKY GROUP PRIVATE AVIATION");
-
-  addLogo(doc, logo, 25, 26, 48);
-
-  doc.setFillColor(...COLORS.navy);
-  doc.roundedRect(142, 16, 48, 24, 3, 3, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.5);
-  doc.setTextColor(221, 230, 240);
-  doc.text("DATE", 147, 25);
-  doc.text("DOCUMENT", 147, 34);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.8);
-  doc.setTextColor(...COLORS.white);
-  doc.text(formatDate(quote?.created_at || new Date()), 181, 25, {
-    align: "right",
-  });
-  doc.text("Reservation", 181, 34, { align: "right" });
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(17);
-  doc.setTextColor(...COLORS.ink);
-  doc.text("Executive Flight Quote", 20, 55);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(...COLORS.steel);
-  doc.text("Professional private aviation quotation", 20, 61);
-
-  doc.setDrawColor(...COLORS.line);
-  doc.setLineWidth(0.35);
-  doc.line(20, 67, 190, 67);
+  const headerBottomY = drawCompactQuoteHeader(doc, logo, quote);
 
   const clientRows = [
     ["Name", quote?.full_name || quote?.client_name || "-"],
@@ -555,35 +607,36 @@ export async function generateFlightQuotePdf(quote) {
     ["Passengers", String(firstRoute?.passengers || quote?.passengers || 0)],
   ];
 
-  drawInfoCard(doc, "Client Information", clientRows, 20, 75, 82, 62);
-  drawInfoCard(doc, "Trip Profile", profileRows, 108, 75, 82, 62);
+  const infoCardsY = headerBottomY + 4.5;
+  drawInfoCard(doc, "Client Information", clientRows, 20, infoCardsY, 82, 50);
+  drawInfoCard(doc, "Trip Profile", profileRows, 108, infoCardsY, 82, 50);
 
-  let y = 149;
+  let y = infoCardsY + 53.5;
 
   drawSectionTitle(doc, "Flight Legs", 20, y);
-  y += 12;
+  y += 9;
 
   doc.setFillColor(...COLORS.accentSoft);
-  doc.roundedRect(20, y, 170, 10, 2, 2, "F");
+  doc.roundedRect(20, y, 170, 8.5, 2, 2, "F");
   doc.setTextColor(...COLORS.navy);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.8);
-  doc.text("#", 25, y + 6.4);
-  doc.text("DEPARTURE", 38, y + 6.4);
-  doc.text("ARRIVAL", 90, y + 6.4);
-  doc.text("DIST (NM)", 140, y + 6.4, { align: "right" });
-  doc.text("TIME", 182, y + 6.4, { align: "right" });
-  y += 10;
+  doc.setFontSize(6.5);
+  doc.text("#", 25, y + 5.6);
+  doc.text("DEPARTURE", 38, y + 5.6);
+  doc.text("ARRIVAL", 90, y + 5.6);
+  doc.text("DIST (NM)", 140, y + 5.6, { align: "right" });
+  doc.text("TIME", 182, y + 5.6, { align: "right" });
+  y += 8.5;
 
   doc.setFont("helvetica", "normal");
   doc.setTextColor(...COLORS.ink);
 
   if (!routes.length) {
     doc.setFillColor(...COLORS.row);
-    doc.rect(20, y, 170, 12, "F");
-    doc.setFontSize(8);
-    doc.text("No flight legs were registered for this quote.", 25, y + 7);
-    y += 12;
+    doc.rect(20, y, 170, 10, "F");
+    doc.setFontSize(7.5);
+    doc.text("No flight legs were registered for this quote.", 25, y + 6);
+    y += 10;
   } else {
     routes.forEach((route, index) => {
       const fromLabel = route?.positioning
@@ -592,19 +645,19 @@ export async function generateFlightQuotePdf(quote) {
       const fromText = doc.splitTextToSize(fromLabel, 44);
       const toText = doc.splitTextToSize(route?.to_airport || "-", 44);
       const metrics = routeMetrics[getLegMetricKey(route, index)] || {};
-      const rowHeight = Math.max(12, Math.max(fromText.length, toText.length) * 4.5 + 6);
+      const rowHeight = Math.max(10.5, Math.max(fromText.length, toText.length) * 4 + 4.5);
 
       if (index % 2 === 0) {
         doc.setFillColor(...COLORS.row);
         doc.rect(20, y, 170, rowHeight, "F");
       }
 
-      doc.setFontSize(7.7);
-      doc.text(String(index + 1), 25, y + 7);
-      doc.text(fromText, 38, y + 7);
-      doc.text(toText, 90, y + 7);
-      doc.text(metrics.distanceLabel || "-", 140, y + 7, { align: "right" });
-      doc.text(metrics.durationLabel || "-", 182, y + 7, { align: "right" });
+      doc.setFontSize(7.3);
+      doc.text(String(index + 1), 25, y + 5.8);
+      doc.text(fromText, 38, y + 5.8);
+      doc.text(toText, 90, y + 5.8);
+      doc.text(metrics.distanceLabel || "-", 140, y + 5.8, { align: "right" });
+      doc.text(metrics.durationLabel || "-", 182, y + 5.8, { align: "right" });
 
       doc.setDrawColor(...COLORS.line);
       doc.line(20, y + rowHeight, 190, y + rowHeight);
@@ -612,58 +665,70 @@ export async function generateFlightQuotePdf(quote) {
     });
   }
 
-  y += 10;
+  const breakdownHeight = 13 + costRows.length * 5.8;
+  const totalBlockHeight = 19;
+  const requiredHeight = 9 + 9 + breakdownHeight + 9 + totalBlockHeight;
+
+  y += 7;
+
+  if (y + requiredHeight > FIRST_PAGE_CONTENT_MAX_Y) {
+    prepareContinuationPage(doc);
+    y = 28;
+  }
 
   drawSectionTitle(doc, "Commercial Breakdown", 20, y);
-  y += 12;
-
-  const breakdownHeight = 16 + costRows.length * 6.8;
+  y += 9;
 
   doc.setDrawColor(...COLORS.line);
   doc.setFillColor(...COLORS.panel);
   doc.roundedRect(20, y, 170, breakdownHeight, 4, 4, "FD");
   doc.setFillColor(...COLORS.accentSoft);
-  doc.roundedRect(24, y + 5, 162, 10, 2, 2, "F");
+  doc.roundedRect(24, y + 4.5, 162, 8.5, 2, 2, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7);
+  doc.setFontSize(6.6);
   doc.setTextColor(...COLORS.navy);
-  doc.text("DESCRIPTION", 29, y + 11.4);
-  doc.text("AMOUNT", 180, y + 11.4, { align: "right" });
+  doc.text("DESCRIPTION", 29, y + 9.9);
+  doc.text("AMOUNT", 180, y + 9.9, { align: "right" });
 
-  let rowY = y + 22;
+  let rowY = y + 17;
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(7.6);
   doc.setTextColor(...COLORS.ink);
 
   costRows.forEach(([label, value], index) => {
     if (index % 2 === 1) {
       doc.setFillColor(...COLORS.white);
-      doc.rect(24, rowY - 4.8, 162, 6.8, "F");
+      doc.rect(24, rowY - 4.1, 162, 5.8, "F");
     }
 
     doc.setFont("helvetica", "normal");
     doc.text(label, 29, rowY);
     doc.setFont("helvetica", "bold");
     doc.text(formatMoney(value), 180, rowY, { align: "right" });
-    rowY += 6.8;
+    rowY += 5.8;
   });
 
-  y = Math.max(y + breakdownHeight + 13, 260);
+  y += breakdownHeight + 9;
+
+  if (y + totalBlockHeight > FIRST_PAGE_CONTENT_MAX_Y) {
+    prepareContinuationPage(doc);
+    y = 28;
+  }
 
   doc.setFillColor(...COLORS.gold);
   doc.rect(20, y - 2, 170, 2, "F");
   doc.setFillColor(...COLORS.accent);
-  doc.roundedRect(20, y, 170, 20, 2, 2, "F");
+  doc.roundedRect(20, y, 170, 17, 2, 2, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
+  doc.setFontSize(7.4);
   doc.setTextColor(...COLORS.white);
-  doc.text("TOTAL ESTIMATED BALANCE", 26, y + 7.5);
+  doc.text("TOTAL ESTIMATED BALANCE", 26, y + 6.6);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.4);
-  doc.text("Estimated in USD, subject to itinerary confirmation", 26, y + 14);
-  doc.setFontSize(16);
+  doc.setFontSize(5.9);
+  doc.text("Estimated in USD, subject to itinerary confirmation", 26, y + 11.7);
+  doc.setFontSize(14.5);
   doc.setFont("helvetica", "bold");
-  doc.text(`${formatMoney(total)} USD`, 185, y + 12.5, { align: "right" });
+  doc.text(`${formatMoney(total)} USD`, 185, y + 10.9, { align: "right" });
 
   doc.addPage();
   drawTermsPageHeader(doc, logo);
