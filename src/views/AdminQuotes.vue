@@ -37,10 +37,117 @@ function money(value, currency = "USD") {
   });
 }
 
+function normalizeAirportCode(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function buildRouteSummaryLegs(quote) {
+  const codes = String(quote?.route_summary || "")
+    .split("-")
+    .map((code) => normalizeAirportCode(code))
+    .filter(Boolean);
+
+  if (codes.length < 2) return [];
+
+  return codes.slice(0, -1).map((from_iata, index) => ({
+    id: `route-summary-leg-${index}`,
+    leg_order: index + 1,
+    leg_type: "client",
+    visible_to_client: true,
+    from_iata,
+    to_iata: codes[index + 1],
+    distance_nm: 0,
+    billable_hours: 0,
+    amount_usd: 0,
+    passengers: Number(quote?.passengers || 1),
+  }));
+}
+
+function buildSnapshotLegs(quote) {
+  const snapshotLegs =
+    quote?.calculation_snapshot?.billableLegs ||
+    quote?.calculation_snapshot?.billableRoutes ||
+    quote?.calculation_snapshot?.legs ||
+    [];
+
+  if (!Array.isArray(snapshotLegs) || !snapshotLegs.length) return [];
+
+  return snapshotLegs
+    .map((leg, index) => {
+      const from_iata = normalizeAirportCode(
+        leg?.from_iata || leg?.from_airport || leg?.from,
+      );
+      const to_iata = normalizeAirportCode(
+        leg?.to_iata || leg?.to_airport || leg?.to,
+      );
+
+      if (!from_iata || !to_iata) return null;
+
+      const legType = String(leg?.leg_type || leg?.positioningType || "").toLowerCase();
+      const visibleToClient =
+        leg?.visible_to_client ??
+        !["positioning", "repositioning", "return_to_base"].includes(legType);
+
+      return {
+        id: leg?.id || `snapshot-leg-${index}`,
+        leg_order: Number(leg?.leg_order || index + 1),
+        leg_type: legType || "client",
+        visible_to_client: visibleToClient,
+        from_iata,
+        to_iata,
+        distance_nm: Number(leg?.distance_nm ?? leg?.miles ?? 0),
+        billable_hours: Number(
+          leg?.billable_hours ?? leg?.billableHours ?? leg?.estimatedHours ?? 0,
+        ),
+        amount_usd: Number(leg?.amount_usd || 0),
+        passengers: Number(leg?.passengers || quote?.passengers || 1),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => Number(left.leg_order || 0) - Number(right.leg_order || 0));
+}
+
+function formatHoursToTimeInput(value) {
+  const hours = Number(value || 0);
+
+  if (!Number.isFinite(hours) || hours <= 0) {
+    return "";
+  }
+
+  const totalMinutes = Math.round(hours * 60);
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  return `${String(wholeHours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function parseTimeInputToHours(value) {
+  const normalized = String(value || "").trim();
+
+  if (!normalized) return 0;
+
+  const match = normalized.match(/^(\d{1,2}):(\d{2})$/);
+
+  if (!match) {
+    const numeric = Number(normalized);
+    return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  const [, hours, minutes] = match;
+  return Number(hours) + Number(minutes) / 60;
+}
+
 function getLegs(quote) {
-  return [...(quote.flight_quote_legs || [])].sort(
-    (left, right) => Number(left.leg_order) - Number(right.leg_order),
+  const savedLegs = [...(quote?.flight_quote_legs || [])].sort(
+    (left, right) => Number(left?.leg_order || 0) - Number(right?.leg_order || 0),
   );
+
+  if (savedLegs.length) return savedLegs;
+
+  const snapshotLegs = buildSnapshotLegs(quote);
+  if (snapshotLegs.length) return snapshotLegs;
+
+  return buildRouteSummaryLegs(quote);
 }
 
 function getClientLegs(quote) {
@@ -130,18 +237,37 @@ function buildPdfEditorState(quote) {
       ];
 
   return {
+    quote_number: quote.quote_number || "",
+    status: quote.status || "calculated",
     client_name: quote.client_name || "",
     client_email: quote.client_email || "",
     client_phone: quote.client_phone || "",
+    flight_type: quote.flight_type || "Private Jet",
+    quote_mode: quote.quote_mode || "complete",
+    time_mode: quote.time_mode || "block",
+    aircraft_id: quote.aircraft_id || null,
     aircraft_name: quote.aircraft_name || "",
+    aircraft_tail: quote.aircraft_tail || null,
+    aircraft_capacity: quote.aircraft_capacity || null,
+    aircraft_base: quote.aircraft_base || null,
+    departure_at: quote.departure_at || null,
+    return_at: quote.return_at || null,
     route_summary: quote.route_summary || "",
     operation_type: quote.operation_type || "national",
     passengers: Number(quote.passengers || 1),
+    client_flight_hours: Number(quote.client_flight_hours || 0),
+    hourly_rate_usd: Number(quote.hourly_rate_usd || 0),
     flight_cost_usd: Number(quote.flight_cost_usd || 0),
+    repositioning_cost_usd: Number(quote.repositioning_cost_usd || 0),
+    return_to_base_cost_usd: Number(quote.return_to_base_cost_usd || 0),
     overnight_cost_usd: Number(quote.overnight_cost_usd || 0),
     operational_expenses_usd: Number(quote.operational_expenses_usd || 0),
     tax_amount_usd: Number(quote.tax_amount_usd || 0),
     total_usd: Number(quote.total_usd || 0),
+    exchange_rate: Number(quote.exchange_rate || 0),
+    total_mxn: Number(quote.total_mxn || 0),
+    notes: quote.notes || null,
+    calculation_version: quote.calculation_version || "v1",
     breakdownRows,
     legs: getLegs(quote).map((leg) => ({
       id: leg.id,
@@ -152,6 +278,7 @@ function buildPdfEditorState(quote) {
       to_iata: leg.to_iata || leg.to_icao || "",
       distance_nm: Number(leg.distance_nm || 0),
       billable_hours: Number(leg.billable_hours || 0),
+      billable_hours_input: formatHoursToTimeInput(leg.billable_hours),
       amount_usd: Number(leg.amount_usd || 0),
       passengers: Number(leg.passengers || quote.passengers || 1),
     })),
@@ -166,6 +293,7 @@ function closePdfEditor() {
 function updateEditorTotal() {
   if (!pdfEditor.value) return;
 
+  pdfEditor.value.total_usd = Number(pdfEditor.value.total_usd || 0);
   recalculateTaxBreakdown();
 }
 
@@ -216,6 +344,51 @@ function syncStandardBreakdownFields() {
   pdfEditor.value.tax_amount_usd = findRowValue([/tax/i]);
 }
 
+function getBreakdownSubtotal() {
+  if (!pdfEditor.value) return 0;
+
+  return pdfEditor.value.breakdownRows
+    .filter((row) => !isTaxBreakdownRow(row))
+    .reduce((sum, row) => sum + Number(row.value || 0), 0);
+}
+
+function buildPdfCalculationSnapshot() {
+  if (!pdfEditor.value) return {};
+
+  return {
+    ...(pdfPreviewQuote.value?.calculation_snapshot || {}),
+    pdfBreakdownRows: pdfEditor.value.breakdownRows.map((row) => ({
+      label: String(row.label || "Concept").trim() || "Concept",
+      value: Number(row.value || 0),
+    })),
+    pdfLegs: pdfEditor.value.legs.map((leg, index) => ({
+      id: leg.id || `pdf-leg-${index + 1}`,
+      leg_order: index + 1,
+      leg_type: leg.leg_type || "client",
+      visible_to_client: leg.visible_to_client ?? leg.leg_type === "client",
+      from_iata: String(leg.from_iata || "").trim().toUpperCase(),
+      to_iata: String(leg.to_iata || "").trim().toUpperCase(),
+      distance_nm: Number(leg.distance_nm || 0),
+      billable_hours: Number(leg.billable_hours || 0),
+      amount_usd: Number(leg.amount_usd || 0),
+      passengers: Number(leg.passengers || pdfEditor.value.passengers || 1),
+    })),
+    pdfTotals: {
+      client_flight_hours: Number(pdfEditor.value.client_flight_hours || 0),
+      hourly_rate_usd: Number(pdfEditor.value.hourly_rate_usd || 0),
+      flight_cost_usd: Number(pdfEditor.value.flight_cost_usd || 0),
+      repositioning_cost_usd: Number(pdfEditor.value.repositioning_cost_usd || 0),
+      return_to_base_cost_usd: Number(pdfEditor.value.return_to_base_cost_usd || 0),
+      overnight_cost_usd: Number(pdfEditor.value.overnight_cost_usd || 0),
+      operational_expenses_usd: Number(pdfEditor.value.operational_expenses_usd || 0),
+      tax_amount_usd: Number(pdfEditor.value.tax_amount_usd || 0),
+      total_usd: Number(pdfEditor.value.total_usd || 0),
+      exchange_rate: Number(pdfEditor.value.exchange_rate || 0),
+      total_mxn: Number(pdfEditor.value.total_mxn || 0),
+    },
+  };
+}
+
 function addBreakdownRow() {
   if (!pdfEditor.value) return;
 
@@ -245,6 +418,7 @@ function addEditorLeg() {
     to_iata: "",
     distance_nm: 0,
     billable_hours: 1,
+    billable_hours_input: "01:00",
     amount_usd: 0,
     passengers: pdfEditor.value.passengers || 1,
   });
@@ -254,6 +428,12 @@ function removeEditorLeg(index) {
   if (!pdfEditor.value) return;
 
   pdfEditor.value.legs.splice(index, 1);
+}
+
+function handleLegTimeInput(leg) {
+  if (!leg) return;
+
+  leg.billable_hours = parseTimeInputToHours(leg.billable_hours_input);
 }
 
 function buildRouteSummaryFromLegs(legs) {
@@ -293,6 +473,17 @@ async function savePdfEditor() {
     const routeSummary =
       pdfEditor.value.route_summary.trim() ||
       buildRouteSummaryFromLegs(pdfEditor.value.legs);
+    const subtotalUsd = getBreakdownSubtotal();
+    const taxAmountUsd = Number(pdfEditor.value.tax_amount_usd || 0);
+    const totalUsd = Number(pdfEditor.value.total_usd || 0);
+    const exchangeRate = Number(
+      pdfEditor.value.exchange_rate ||
+      pdfPreviewQuote.value?.exchange_rate ||
+      selectedQuote.value?.exchange_rate ||
+      0,
+    );
+    const totalMxn = exchangeRate > 0 ? Number((totalUsd * exchangeRate).toFixed(2)) : null;
+    const taxRate = subtotalUsd > 0 ? Number((taxAmountUsd / subtotalUsd).toFixed(4)) : 0;
     const billableHours = pdfEditor.value.legs.reduce(
       (sum, leg) => sum + Number(leg.billable_hours || 0),
       0,
@@ -303,49 +494,71 @@ async function savePdfEditor() {
     );
 
     const quotePayload = {
+      quote_number: pdfEditor.value.quote_number || pdfPreviewQuote.value.quote_number || null,
+      status: pdfEditor.value.status || pdfPreviewQuote.value.status || "calculated",
       client_name: pdfEditor.value.client_name,
       client_email: pdfEditor.value.client_email || null,
       client_phone: pdfEditor.value.client_phone || null,
+      flight_type: pdfEditor.value.flight_type || "Private Jet",
+      quote_mode: pdfEditor.value.quote_mode || "complete",
+      time_mode: pdfEditor.value.time_mode || "block",
+      aircraft_id: pdfEditor.value.aircraft_id || null,
       aircraft_name: pdfEditor.value.aircraft_name,
+      aircraft_tail: pdfEditor.value.aircraft_tail || null,
+      aircraft_capacity: pdfEditor.value.aircraft_capacity || null,
+      aircraft_base: pdfEditor.value.aircraft_base || null,
+      departure_at: pdfEditor.value.departure_at || null,
+      return_at: pdfEditor.value.return_at || null,
       route_summary: routeSummary,
       operation_type: pdfEditor.value.operation_type,
       passengers: Number(pdfEditor.value.passengers || 1),
+      client_flight_hours: Number(pdfEditor.value.client_flight_hours || 0),
+      hourly_rate_usd: Number(pdfEditor.value.hourly_rate_usd || 0),
       flight_cost_usd: Number(pdfEditor.value.flight_cost_usd || 0),
+      repositioning_cost_usd: Number(pdfEditor.value.repositioning_cost_usd || 0),
+      return_to_base_cost_usd: Number(pdfEditor.value.return_to_base_cost_usd || 0),
       overnight_cost_usd: Number(pdfEditor.value.overnight_cost_usd || 0),
       operational_expenses_usd: Number(pdfEditor.value.operational_expenses_usd || 0),
-      tax_amount_usd: Number(pdfEditor.value.tax_amount_usd || 0),
-      total_usd: Number(pdfEditor.value.total_usd || 0),
+      subtotal_usd: subtotalUsd,
+      tax_rate: taxRate,
+      tax_amount_usd: taxAmountUsd,
+      total_usd: totalUsd,
+      exchange_rate: exchangeRate || null,
+      total_mxn: totalMxn,
+      notes: pdfEditor.value.notes || null,
+      calculation_version: pdfEditor.value.calculation_version || "v1",
       billable_hours: billableHours,
       total_distance_nm: totalDistance,
-      calculation_snapshot: {
-        ...(pdfPreviewQuote.value.calculation_snapshot || {}),
-        pdfBreakdownRows: pdfEditor.value.breakdownRows.map((row) => ({
-          label: String(row.label || "Concept").trim() || "Concept",
-          value: Number(row.value || 0),
-        })),
-      },
+      calculation_snapshot: buildPdfCalculationSnapshot(),
     };
 
-    const { data: quote, error: quoteError } = await supabase
+    const { data: updatedRows, error: quoteError } = await supabase
       .from("flight_quotes")
       .update(quotePayload)
       .eq("id", pdfPreviewQuote.value.id)
-      .select("*")
-      .single();
+      .select("id");
 
     if (quoteError) throw quoteError;
+
+    if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+      throw new Error(
+        "La base no actualizo ninguna fila en flight_quotes. Revisa permisos UPDATE/RLS o que el id exista.",
+      );
+    }
+
+    const quoteId = pdfPreviewQuote.value.id;
 
     const { error: deleteLegsError } = await supabase
       .from("flight_quote_legs")
       .delete()
-      .eq("quote_id", quote.id);
+      .eq("quote_id", quoteId);
 
     if (deleteLegsError) throw deleteLegsError;
 
     const legsPayload = pdfEditor.value.legs
       .filter((leg) => leg.from_iata && leg.to_iata)
       .map((leg, index) => ({
-        quote_id: quote.id,
+        quote_id: quoteId,
         leg_order: index + 1,
         leg_type: leg.leg_type || "client",
         visible_to_client: leg.visible_to_client ?? leg.leg_type === "client",
@@ -366,7 +579,9 @@ async function savePdfEditor() {
     }
 
     const updatedQuote = {
-      ...quote,
+      ...pdfPreviewQuote.value,
+      ...quotePayload,
+      id: quoteId,
       flight_quote_legs: legsPayload,
     };
 
@@ -374,12 +589,14 @@ async function savePdfEditor() {
       item.id === updatedQuote.id ? updatedQuote : item,
     );
     pdfPreviewQuote.value = updatedQuote;
+    selectedQuote.value = updatedQuote;
     editingPdf.value = false;
     pdfEditor.value = null;
+    await fetchQuotes();
     await generateQuotePdf(updatedQuote);
   } catch (error) {
     console.error("Unable to update PDF quote", error);
-    window.alert("No se pudo guardar la edicion del PDF.");
+    window.alert(`No se pudo guardar la edicion del PDF.\n${error?.message || error || ""}`);
   } finally {
     savingPdfEdit.value = false;
   }
@@ -500,7 +717,6 @@ onBeforeUnmount(() => {
             <th>Operacion</th>
             <th>Horas</th>
             <th>Total USD</th>
-            <th>Total MXN</th>
             <th>Acciones</th>
           </tr>
         </thead>
@@ -521,7 +737,6 @@ onBeforeUnmount(() => {
             <td>{{ quote.operation_type === "international" ? "Internacional" : "Nacional" }}</td>
             <td>{{ Number(quote.billable_hours || 0).toFixed(2) }} h</td>
             <td class="price">{{ money(quote.total_usd, "USD") }}</td>
-            <td class="price">{{ money(quote.total_mxn, "MXN") }}</td>
             <td class="actions">
               <button class="view-btn" type="button" @click="selectedQuote = quote">
                 Ver
@@ -616,7 +831,15 @@ onBeforeUnmount(() => {
                     <td><input v-model="leg.from_iata" /></td>
                     <td><input v-model="leg.to_iata" /></td>
                     <td><input v-model.number="leg.distance_nm" type="number" min="0" /></td>
-                    <td><input v-model.number="leg.billable_hours" type="number" min="0" step="0.1" /></td>
+                    <td>
+                      <input
+                        v-model="leg.billable_hours_input"
+                        type="text"
+                        inputmode="numeric"
+                        placeholder="01:30"
+                        @input="handleLegTimeInput(leg)"
+                      />
+                    </td>
                     <td>
                       <button class="tiny-danger" type="button" @click="removeEditorLeg(index)">x</button>
                     </td>
@@ -670,7 +893,8 @@ onBeforeUnmount(() => {
               v-model.number="pdfEditor.total_usd"
               type="number"
               min="0"
-              readonly
+              step="0.01"
+              @input="updateEditorTotal"
             />
           </section>
 
@@ -1186,6 +1410,10 @@ h3 {
   font-size: 24px;
   font-weight: 900;
   text-align: right;
+}
+
+.pdf-edit-total input:focus {
+  color: #0f172a;
 }
 
 .pdf-edit-footer-actions {

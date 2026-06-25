@@ -4,6 +4,91 @@ function normalizeAirportCode(value) {
   return String(value || "").trim().toUpperCase();
 }
 
+function getSavedFlightQuoteLegs(quote) {
+  const legs = Array.isArray(quote?.flight_quote_legs) ? [...quote.flight_quote_legs] : [];
+
+  return legs
+    .sort((left, right) => Number(left?.leg_order || 0) - Number(right?.leg_order || 0))
+    .map((leg, index) => {
+      const legType = String(leg?.leg_type || "").toLowerCase();
+      const isReturnToBase = legType === "return_to_base";
+      const isPositioning =
+        legType === "positioning" || legType === "repositioning" || isReturnToBase;
+
+      return {
+        id: leg?.id || `saved-leg-${index}`,
+        from_airport: normalizeAirportCode(leg?.from_iata || leg?.from_icao),
+        to_airport: normalizeAirportCode(leg?.to_iata || leg?.to_icao),
+        aircraft_id: quote?.aircraft_id || null,
+        aircraft_fleet: {
+          name: quote?.aircraft_name || EMPTY_VALUE,
+        },
+        passengers: leg?.passengers || quote?.passengers || null,
+        positioning: isPositioning,
+        positioningLabel: isReturnToBase ? "Regreso a base" : "Reposicionamiento",
+      };
+    })
+    .filter((leg) => leg.from_airport && leg.to_airport);
+}
+
+function getSnapshotLegs(quote) {
+  const snapshotLegs =
+    quote?.calculation_snapshot?.billableLegs ||
+    quote?.calculation_snapshot?.billableRoutes ||
+    quote?.calculation_snapshot?.legs ||
+    [];
+
+  if (!Array.isArray(snapshotLegs) || !snapshotLegs.length) return [];
+
+  return snapshotLegs
+    .map((leg, index) => {
+      const legType = String(leg?.leg_type || leg?.positioningType || "").toLowerCase();
+      const isReturnToBase = legType === "return_to_base";
+      const isPositioning =
+        legType === "positioning" || legType === "repositioning" || isReturnToBase;
+
+      return {
+        id: leg?.id || `snapshot-leg-${index}`,
+        from_airport: normalizeAirportCode(
+          leg?.from_airport || leg?.from_iata || leg?.from,
+        ),
+        to_airport: normalizeAirportCode(
+          leg?.to_airport || leg?.to_iata || leg?.to,
+        ),
+        aircraft_id: quote?.aircraft_id || leg?.aircraft_id || null,
+        aircraft_fleet: {
+          name: quote?.aircraft_name || EMPTY_VALUE,
+        },
+        passengers: leg?.passengers || quote?.passengers || null,
+        positioning: isPositioning,
+        positioningLabel: isReturnToBase ? "Regreso a base" : "Reposicionamiento",
+      };
+    })
+    .filter((leg) => leg.from_airport && leg.to_airport);
+}
+
+function getRouteSummaryLegs(quote) {
+  const codes = String(quote?.route_summary || "")
+    .split("-")
+    .map((code) => normalizeAirportCode(code))
+    .filter(Boolean);
+
+  if (codes.length < 2) return [];
+
+  return codes.slice(0, -1).map((fromAirport, index) => ({
+    id: `route-summary-leg-${index}`,
+    from_airport: fromAirport,
+    to_airport: codes[index + 1],
+    aircraft_id: quote?.aircraft_id || null,
+    aircraft_fleet: {
+      name: quote?.aircraft_name || EMPTY_VALUE,
+    },
+    passengers: quote?.passengers || null,
+    positioning: false,
+    positioningLabel: "",
+  }));
+}
+
 function compareRoutes(left, right) {
   const leftDate = left?.start_date ? new Date(left.start_date).getTime() : 0;
   const rightDate = right?.start_date ? new Date(right.start_date).getTime() : 0;
@@ -90,9 +175,17 @@ export function getFinalQuoteRoute(quote) {
 }
 
 export function getDisplayQuoteLegs(quote) {
+  const savedLegs = getSavedFlightQuoteLegs(quote);
+  if (savedLegs.length) return savedLegs;
+
+  const snapshotLegs = getSnapshotLegs(quote);
+  if (snapshotLegs.length) return snapshotLegs;
+
   const routes = getOrderedQuoteRoutes(quote);
 
-  if (!routes.length) return [];
+  if (!routes.length) {
+    return getRouteSummaryLegs(quote);
+  }
 
   const firstRoute = routes[0];
   const lastRoute = routes[routes.length - 1];

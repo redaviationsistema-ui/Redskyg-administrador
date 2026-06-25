@@ -136,7 +136,19 @@ function getDurationLabel(value) {
 
   if (!Number.isFinite(hours) || hours <= 0) return "-";
 
-  return `${Math.round(hours)} hrs`;
+  const totalMinutes = Math.round(hours * 60);
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (wholeHours && minutes) {
+    return `${wholeHours}h ${minutes}m`;
+  }
+
+  if (wholeHours) {
+    return `${wholeHours}h`;
+  }
+
+  return `${minutes}m`;
 }
 
 function getSavedQuoteLegs(quote) {
@@ -162,7 +174,7 @@ function getSavedQuoteLegs(quote) {
         durationLabel:
           leg?.billable_hours == null
             ? "-"
-            : `${Math.round(Number(leg.billable_hours) || 0)} hrs`,
+            : getDurationLabel(leg?.billable_hours),
       };
     });
 }
