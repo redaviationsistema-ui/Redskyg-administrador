@@ -1,0 +1,267 @@
+<script setup>
+import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import { supabase } from "@/supabase";
+
+const router = useRouter();
+const aeronaves = ref([]);
+const loading = ref(false);
+
+/* ===================================
+   CONSTRUIR DATA URL CORRECTAMENTE
+=================================== */
+const buildImageUrl = (base64String, mimeType) => {
+  if (!base64String) return null;
+
+  // Si ya viene como dataURL completo
+  if (base64String.startsWith("data:")) {
+    return base64String;
+  }
+
+  return `data:${mimeType || "image/png"};base64,${base64String}`;
+};
+
+
+const loadAircraft = async () => {
+  loading.value = true;
+
+  const { data, error } = await supabase
+    .from("aircraft_fleet")
+    .select(`
+      id,
+      name,
+      aircraft_type,
+      capacity_passengers,
+      is_active,
+      aeronave_imagenes!fk_aircraft (
+        imagen_url
+      )
+    `);
+
+  if (error) {
+    console.error(error);
+    loading.value = false;
+    return;
+  }
+
+  aeronaves.value = data.map(item => ({
+    id: item.id,
+    nombre: item.name,
+    categoria: item.aircraft_type,
+    capacidad_pasajeros: item.capacity_passengers,
+    disponible: item.is_active,
+    imagen: item.aeronave_imagenes?.[0]?.imagen_url || null
+  }));
+
+  loading.value = false;
+};
+/* ===================================
+   ELIMINAR
+=================================== */
+const deleteAircraft = async (id) => {
+  const confirmDelete = confirm("¿Seguro que deseas eliminar esta aeronave?");
+  if (!confirmDelete) return;
+
+  loading.value = true;
+
+  const { error } = await supabase
+    .from("foto_aeronaves")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error(error);
+    alert("Error al eliminar la aeronave");
+  } else {
+    aeronaves.value = aeronaves.value.filter(item => item.id !== id);
+  }
+
+  loading.value = false;
+};
+
+onMounted(loadAircraft);
+</script>
+
+<template>
+  <div class="page">
+    <div class="page-header">
+      <h2>Aeronaves</h2>
+      <button class="btn-primary" @click="router.push('/aircraft/new')">
+        + Nueva Aeronave
+      </button>
+    </div>
+
+    <div class="table-card">
+      <table class="styled-table">
+        <thead>
+  <tr>
+    <th>Imagen</th>
+    <th>Nombre</th>
+    <th>Categoría</th>
+    <th>Capacidad</th>
+    <th>Disponible</th>
+    <th>Acciones</th>
+  </tr>
+</thead>
+
+<tbody>
+  <tr v-for="item in aeronaves" :key="item.id">
+    
+    <td>
+  <img
+  v-if="item.imagen"
+  :src="item.imagen"
+  class="thumbnail"
+/>
+</td>
+    <td>{{ item.nombre }}</td>
+    <td>{{ item.categoria }}</td>
+    <td>{{ item.capacidad_pasajeros }}</td>
+    <td>
+      <span :class="item.disponible ? 'badge-active' : 'badge-inactive'">
+        {{ item.disponible ? "Disponible" : "No disponible" }}
+      </span>
+    </td>
+  <td>
+  <button
+    class="btn-edit"
+    @click="router.push(`/aircraft/edit/${item.id}`)"
+  >
+    Editar
+  </button>
+
+  <button
+    class="btn-delete"
+    @click="deleteAircraft(item.id)"
+  >
+    Eliminar
+  </button>
+</td>
+  </tr>
+</tbody>
+
+      </table>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.page {
+  padding: 30px;
+  color: var(--text-main);
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.table-card {
+  background: var(--bg-surface-solid);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.styled-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.styled-table th {
+  text-align: left;
+  padding: 12px;
+  font-weight: 600;
+  background: var(--bg-muted);
+  color: var(--text-strong);
+}
+
+.styled-table td {
+  padding: 12px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-main);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 100%);
+  color: white;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.btn-primary:hover {
+  filter: brightness(0.96);
+}
+
+.btn-edit {
+  background: #ffc107;
+  color: #000;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+.badge-active {
+  background: #d4edda;
+  color: #155724;
+  padding: 4px 8px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+
+.badge-inactive {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 4px 8px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+.thumbnail {
+  width: 100px;
+  height: 70px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+  border: 1px solid var(--border-color);
+}
+.btn-delete {
+  background: #dc3545;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  margin-left: 8px;
+  transition: 0.3s;
+}
+
+.btn-delete:hover {
+  background: #b02a37;
+}
+
+:global(html[data-theme="dark"]) .table-card {
+  background: var(--bg-surface-solid);
+}
+
+:global(html[data-theme="dark"]) .styled-table th {
+  background: var(--bg-soft);
+  color: var(--text-strong);
+}
+
+:global(html[data-theme="dark"]) .styled-table td {
+  color: var(--text-main);
+}
+</style>
