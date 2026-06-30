@@ -322,6 +322,15 @@ function getTripType(quote) {
     : "National Charter";
 }
 
+function getPassengers(value) {
+  const passengers = Number(value);
+  return Number.isFinite(passengers) && passengers > 0 ? String(passengers) : null;
+}
+
+function getQuoteNotes(quote) {
+  return String(quote?.notes || "").trim();
+}
+
 function getQuoteCostRows(quote, customerRoutes) {
   const customRows = quote?.calculation_snapshot?.pdfBreakdownRows;
 
@@ -590,6 +599,18 @@ export async function generateFlightQuotePdf(quote) {
   const tripType = getTripType(quote);
   const costRows = getQuoteCostRows(quote, customerRoutes);
   const total = getQuoteTotal(quote, costRows);
+  const totalMxn = Number(
+    quote?.total_mxn ||
+      quote?.calculation_snapshot?.pdfTotals?.total_mxn ||
+      0,
+  );
+  const showTotalMxnPreference = quote?.calculation_snapshot?.pdfTotals?.show_total_mxn;
+  const hasTotalMxn = Number.isFinite(totalMxn) && totalMxn > 0;
+  const showTotalMxn =
+    showTotalMxnPreference === undefined
+      ? hasTotalMxn
+      : Boolean(showTotalMxnPreference) && hasTotalMxn;
+  const notes = getQuoteNotes(quote);
   const logo = await loadLogo();
 
   drawTopBand(doc);
@@ -597,15 +618,17 @@ export async function generateFlightQuotePdf(quote) {
 
   const clientRows = [
     ["Name", quote?.full_name || quote?.client_name || "-"],
-    ["Email", quote?.email || quote?.client_email || "-"],
-    ["Phone", quote?.phone || quote?.client_phone || "-"],
   ];
   const profileRows = [
     ["Aircraft", aircraftName],
     ["Route", getQuoteRoutePath(quote)],
     ["Trip Type", tripType],
-    ["Passengers", String(firstRoute?.passengers || quote?.passengers || 0)],
   ];
+  const passengers = getPassengers(firstRoute?.passengers ?? quote?.passengers);
+
+  if (passengers) {
+    profileRows.push(["Passengers", passengers]);
+  }
 
   const infoCardsY = headerBottomY + 4.5;
   drawInfoCard(doc, "Client Information", clientRows, 20, infoCardsY, 82, 50);
@@ -666,7 +689,7 @@ export async function generateFlightQuotePdf(quote) {
   }
 
   const breakdownHeight = 13 + costRows.length * 5.8;
-  const totalBlockHeight = 19;
+  const totalBlockHeight = showTotalMxn ? 22 : 17;
   const requiredHeight = 9 + 9 + breakdownHeight + 9 + totalBlockHeight;
 
   y += 7;
@@ -718,7 +741,7 @@ export async function generateFlightQuotePdf(quote) {
   doc.setFillColor(...COLORS.gold);
   doc.rect(20, y - 2, 170, 2, "F");
   doc.setFillColor(...COLORS.accent);
-  doc.roundedRect(20, y, 170, 17, 2, 2, "F");
+  doc.roundedRect(20, y, 170, totalBlockHeight, 2, 2, "F");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.4);
   doc.setTextColor(...COLORS.white);
@@ -726,9 +749,64 @@ export async function generateFlightQuotePdf(quote) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(5.9);
   doc.text("Estimated in USD, subject to itinerary confirmation", 26, y + 11.7);
-  doc.setFontSize(14.5);
-  doc.setFont("helvetica", "bold");
-  doc.text(`${formatMoney(total)} USD`, 185, y + 10.9, { align: "right" });
+
+  if (showTotalMxn) {
+    doc.setFontSize(7.2);
+    doc.text("Valor total USD:", 120, y + 7.4);
+    doc.text("Valor total MXN:", 120, y + 14.4);
+    doc.setFontSize(8.1);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${formatMoney(total)} USD`, 185, y + 7.4, { align: "right" });
+    doc.text(`${formatMoney(totalMxn)} MXN`, 185, y + 14.4, { align: "right" });
+  } else {
+    doc.setFontSize(14.5);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${formatMoney(total)} USD`, 185, y + 10.9, { align: "right" });
+  }
+
+  y += totalBlockHeight + 9;
+
+  if (notes) {
+    const noteLines = doc.splitTextToSize(notes, 158);
+    let lineIndex = 0;
+    let hasDrawnNotesTitle = false;
+
+    while (lineIndex < noteLines.length) {
+      if (y + 28 > FIRST_PAGE_CONTENT_MAX_Y) {
+        prepareContinuationPage(doc);
+        y = 28;
+        hasDrawnNotesTitle = false;
+      }
+
+      if (!hasDrawnNotesTitle) {
+        drawSectionTitle(doc, "Notes", 20, y);
+        y += 9;
+        hasDrawnNotesTitle = true;
+      }
+
+      const availableHeight = FIRST_PAGE_CONTENT_MAX_Y - y;
+      const maxLines = Math.max(1, Math.floor((availableHeight - 14) / 4.2));
+      const lines = noteLines.slice(lineIndex, lineIndex + maxLines);
+      const notesHeight = Math.max(22, 14 + lines.length * 4.2);
+
+      doc.setDrawColor(...COLORS.line);
+      doc.setFillColor(...COLORS.panel);
+      doc.roundedRect(20, y, 170, notesHeight, 4, 4, "FD");
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(...COLORS.ink);
+      doc.text(lines, 26, y + 10);
+
+      y += notesHeight + 6;
+      lineIndex += lines.length;
+
+      if (lineIndex < noteLines.length) {
+        prepareContinuationPage(doc);
+        y = 28;
+        hasDrawnNotesTitle = false;
+      }
+    }
+  }
 
   doc.addPage();
   drawTermsPageHeader(doc, logo);

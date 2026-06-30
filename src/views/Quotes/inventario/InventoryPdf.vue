@@ -548,8 +548,6 @@ const generatePDF = () => {
     doc.text("The Green, Ste R, Dover, ", 78, 24);
     doc.text("Delaware 19901", 78, 29);
     doc.text("sales@redskyg.com", 78, 34);
-    doc.text("+52 722 112 6671", 78, 39);
- +13054646394
     doc.setFillColor(255, 255, 255);
     doc.roundedRect(154, 8, 46, 28, 4, 4, "F");
     doc.setDrawColor(213, 223, 233);
@@ -622,8 +620,6 @@ const generatePDF = () => {
       "CUSTOMER & SALES INFORMATION",
       [
         `Contact: ${client_contact || ""}`,
-        `Phone: ${client_phone || ""}`,
-        `Email: ${client_email || ""}`,
         `EXW: ${client_exw || ""}`,
         `Your Ref#: ${client_ref || ""}`,
       ],
