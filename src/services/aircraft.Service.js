@@ -1,21 +1,21 @@
 import { supabase } from "@/supabase";
 
 export const getAircraft = async () => {
-  return await supabase.from("foto_aeronaves ").select("*").order("id", { ascending: false });
+  return await supabase.from("aircraft_fleet").select("*").order("created_at", { ascending: false });
 };
 
 export const getAircraftById = async (id) => {
-  return await supabase.from("foto_aeronaves ").select("*").eq("id", id).single();
+  return await supabase.from("aircraft_fleet").select("*").eq("id", id).single();
 };
 
 export const createAircraft = async (data) => {
-  return await supabase.from("foto_aeronaves ").insert([data]);
+  return await supabase.from("aircraft_fleet").insert([data]);
 };
 
 export const updateAircraft = async (id, data) => {
-  return await supabase.from("foto_aeronaves ").update(data).eq("id", id);
+  return await supabase.from("aircraft_fleet").update(data).eq("id", id);
 };
 
 export const deleteAircraft = async (id) => {
-  return await supabase.from("foto_aeronaves ").delete().eq("id", id);
+  return await supabase.from("aircraft_fleet").delete().eq("id", id);
 };

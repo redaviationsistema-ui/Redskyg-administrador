@@ -146,12 +146,16 @@ const clientRows = computed(() => [
   ["PHONE", props.quote?.phone || EMPTY_VALUE],
 ]);
 
-const profileRows = computed(() => [
-  ["AIRCRAFT", getAircraftName(firstRoute.value)],
-  ["ROUTE", routePath.value],
-  ["TRIP TYPE", tripType.value],
-  ["PASSENGERS", firstRoute.value?.passengers || EMPTY_VALUE],
-]);
+const profileRows = computed(() => {
+  const passengerCount = Number(firstRoute.value?.passengers ?? props.quote?.passengers ?? 0);
+
+  return [
+    ["AIRCRAFT", getAircraftName(firstRoute.value)],
+    ["ROUTE", routePath.value],
+    ["TRIP TYPE", tripType.value],
+    passengerCount > 0 ? ["PASSENGERS", passengerCount] : null,
+  ].filter(Boolean);
+});
 
 const overnightCrewNights = computed(() =>
   getNightsBetween(firstRoute.value?.start_date, lastRoute.value?.end_date),

@@ -590,6 +590,10 @@ export async function generateFlightQuotePdf(quote) {
   const tripType = getTripType(quote);
   const costRows = getQuoteCostRows(quote, customerRoutes);
   const total = getQuoteTotal(quote, costRows);
+  const exchangeRate = Number(quote?.exchange_rate || 0);
+  const totalMxn =
+    Number(quote?.total_mxn || 0) || (exchangeRate > 0 ? Number((total * exchangeRate).toFixed(2)) : 0);
+  const showMxnInPdf = Boolean(quote?.calculation_snapshot?.show_mxn_in_pdf);
   const logo = await loadLogo();
 
   drawTopBand(doc);
@@ -600,12 +604,13 @@ export async function generateFlightQuotePdf(quote) {
     ["Email", quote?.email || quote?.client_email || "-"],
     ["Phone", quote?.phone || quote?.client_phone || "-"],
   ];
+  const passengerCount = Number(firstRoute?.passengers ?? quote?.passengers ?? 0);
   const profileRows = [
     ["Aircraft", aircraftName],
     ["Route", getQuoteRoutePath(quote)],
     ["Trip Type", tripType],
-    ["Passengers", String(firstRoute?.passengers || quote?.passengers || 0)],
-  ];
+    passengerCount > 0 ? ["Passengers", String(passengerCount)] : null,
+  ].filter(Boolean);
 
   const infoCardsY = headerBottomY + 4.5;
   drawInfoCard(doc, "Client Information", clientRows, 20, infoCardsY, 82, 50);
@@ -666,7 +671,7 @@ export async function generateFlightQuotePdf(quote) {
   }
 
   const breakdownHeight = 13 + costRows.length * 5.8;
-  const totalBlockHeight = 19;
+  const totalBlockHeight = showMxnInPdf && exchangeRate > 0 ? 28 : 20;
   const requiredHeight = 9 + 9 + breakdownHeight + 9 + totalBlockHeight;
 
   y += 7;
@@ -718,17 +723,28 @@ export async function generateFlightQuotePdf(quote) {
   doc.setFillColor(...COLORS.gold);
   doc.rect(20, y - 2, 170, 2, "F");
   doc.setFillColor(...COLORS.accent);
-  doc.roundedRect(20, y, 170, 17, 2, 2, "F");
+  doc.roundedRect(20, y, 170, totalBlockHeight, 3, 3, "F");
+  doc.setFillColor(37, 57, 79);
+  doc.roundedRect(137, y + 4, 48, 10.5, 2.5, 2.5, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.4);
+  doc.setFontSize(5.8);
   doc.setTextColor(...COLORS.white);
-  doc.text("TOTAL ESTIMATED BALANCE", 26, y + 6.6);
+  doc.text("SUMMARY", 26, y + 5.4);
+  doc.setFontSize(8.6);
+  doc.text("TOTAL ESTIMATED BALANCE", 26, y + 10.6);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(5.9);
-  doc.text("Estimated in USD, subject to itinerary confirmation", 26, y + 11.7);
-  doc.setFontSize(14.5);
+  doc.text("Estimated in USD, subject to itinerary confirmation", 26, y + 16.2);
+  doc.setFontSize(11.8);
   doc.setFont("helvetica", "bold");
-  doc.text(`${formatMoney(total)} USD`, 185, y + 10.9, { align: "right" });
+  doc.text(`${formatMoney(total)} USD`, 181.5, y + 11.3, { align: "right" });
+  if (showMxnInPdf && exchangeRate > 0) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11.8);
+    doc.text(`${formatMoney(totalMxn)} MXN`, 181.5, y + 20.6, {
+      align: "right",
+    });
+  }
 
   doc.addPage();
   drawTermsPageHeader(doc, logo);

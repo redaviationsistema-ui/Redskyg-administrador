@@ -158,7 +158,7 @@ const routes = [
         props: true,
       },
       {
-        path: "aircraft/:id(\\d+)",
+        path: "aircraft/:id",
         name: "AircraftDetail",
         component: () => import("@/views/Aircraft/AircraftDetailView.vue"),
         props: true,

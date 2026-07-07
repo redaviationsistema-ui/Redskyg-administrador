@@ -7,36 +7,42 @@ const router = useRouter();
 const aeronaves = ref([]);
 const loading = ref(false);
 
-/* ===================================
-   CONSTRUIR DATA URL CORRECTAMENTE
-=================================== */
-const buildImageUrl = (base64String, mimeType) => {
-  if (!base64String) return null;
+const getGalleryImage = (images) => {
+  if (!Array.isArray(images) || !images.length) return null;
 
-  // Si ya viene como dataURL completo
-  if (base64String.startsWith("data:")) {
-    return base64String;
+  const firstImage = images[0];
+
+  if (typeof firstImage === "string") {
+    return firstImage;
   }
 
-  return `data:${mimeType || "image/png"};base64,${base64String}`;
-};
+  if (firstImage && typeof firstImage === "object") {
+    return (
+      firstImage.url ||
+      firstImage.imagen_url ||
+      firstImage.publicUrl ||
+      null
+    );
+  }
 
+  return null;
+};
 
 const loadAircraft = async () => {
   loading.value = true;
 
   const { data, error } = await supabase
-    .from("aircraft_fleet")
-    .select(`
-      id,
-      name,
-      aircraft_type,
-      capacity_passengers,
-      is_active,
-      aeronave_imagenes!fk_aircraft (
-        imagen_url
-      )
-    `);
+  .from("aircraft_fleet")
+  .select(`
+    id,
+    name,
+    aircraft_type,
+    capacity_passengers,
+    is_active,
+    imagen_url,
+    exterior_images,
+    interior_images
+  `);
 
   if (error) {
     console.error(error);
@@ -50,7 +56,10 @@ const loadAircraft = async () => {
     categoria: item.aircraft_type,
     capacidad_pasajeros: item.capacity_passengers,
     disponible: item.is_active,
-    imagen: item.aeronave_imagenes?.[0]?.imagen_url || null
+    imagen:
+      item.imagen_url ||
+      getGalleryImage(item.exterior_images) ||
+      getGalleryImage(item.interior_images)
   }));
 
   loading.value = false;
@@ -65,7 +74,7 @@ const deleteAircraft = async (id) => {
   loading.value = true;
 
   const { error } = await supabase
-    .from("foto_aeronaves")
+    .from("aircraft_fleet")
     .delete()
     .eq("id", id);
 
