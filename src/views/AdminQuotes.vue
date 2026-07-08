@@ -285,7 +285,11 @@ function buildPdfEditorState(quote) {
     total_usd: Number(quote.total_usd || 0),
     exchange_rate: Number(quote.exchange_rate || 0),
     total_mxn: Number(quote.total_mxn || 0),
-    show_mxn_in_pdf: Boolean(quote.calculation_snapshot?.show_mxn_in_pdf),
+    show_mxn_in_pdf: Boolean(
+      quote.calculation_snapshot?.show_mxn_in_pdf ??
+        quote.calculation_snapshot?.pdfTotals?.show_total_mxn ??
+        Number(quote.total_mxn || quote.calculation_snapshot?.pdfTotals?.total_mxn || 0) > 0,
+    ),
     notes: quote.notes || null,
     calculation_version: quote.calculation_version || "v1",
     breakdownRows,
@@ -421,7 +425,10 @@ function buildPdfCalculationSnapshot() {
       tax_amount_usd: Number(pdfEditor.value.tax_amount_usd || 0),
       total_usd: Number(pdfEditor.value.total_usd || 0),
       exchange_rate: Number(pdfEditor.value.exchange_rate || 0),
-      total_mxn: Number(pdfEditor.value.total_mxn || 0),
+      total_mxn: pdfEditor.value.show_mxn_in_pdf
+        ? Number(pdfEditor.value.total_mxn || 0)
+        : 0,
+      show_total_mxn: Boolean(pdfEditor.value.show_mxn_in_pdf),
     },
     show_mxn_in_pdf: Boolean(pdfEditor.value.show_mxn_in_pdf),
   };
@@ -514,13 +521,12 @@ async function savePdfEditor() {
     const subtotalUsd = getBreakdownSubtotal();
     const taxAmountUsd = Number(pdfEditor.value.tax_amount_usd || 0);
     const totalUsd = Number(pdfEditor.value.total_usd || 0);
-    const exchangeRate = Number(
-      pdfEditor.value.exchange_rate ||
-      pdfPreviewQuote.value?.exchange_rate ||
-      selectedQuote.value?.exchange_rate ||
-      0,
-    );
-    const totalMxn = exchangeRate > 0 ? Number((totalUsd * exchangeRate).toFixed(2)) : null;
+    if (!pdfEditor.value.show_mxn_in_pdf) {
+      pdfEditor.value.total_mxn = 0;
+    }
+    const exchangeRate = Number(pdfEditor.value.exchange_rate || 0);
+    const showTotalMxn = Boolean(pdfEditor.value.show_mxn_in_pdf);
+    const totalMxn = showTotalMxn ? Number(pdfEditor.value.total_mxn || 0) || null : null;
     const taxRate = subtotalUsd > 0 ? Number((taxAmountUsd / subtotalUsd).toFixed(4)) : 0;
     const billableHours = pdfEditor.value.legs.reduce(
       (sum, leg) => sum + Number(leg.billable_hours || 0),

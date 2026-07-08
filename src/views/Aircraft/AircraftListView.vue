@@ -7,6 +7,17 @@ const router = useRouter();
 const aeronaves = ref([]);
 const loading = ref(false);
 
+const formatUsd = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "-";
+
+  return amount.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+  });
+};
+
 const getGalleryImage = (images) => {
   if (!Array.isArray(images) || !images.length) return null;
 
@@ -37,6 +48,9 @@ const loadAircraft = async () => {
     id,
     name,
     aircraft_type,
+    rental_price_usd,
+    cruise_speed_knots,
+    national_expenses_usd,
     capacity_passengers,
     is_active,
     imagen_url,
@@ -54,6 +68,9 @@ const loadAircraft = async () => {
     id: item.id,
     nombre: item.name,
     categoria: item.aircraft_type,
+    precio_renta_usd: item.rental_price_usd,
+    velocidad_crucero_nudos: item.cruise_speed_knots,
+    gastos_nacionales_usd: item.national_expenses_usd,
     capacidad_pasajeros: item.capacity_passengers,
     disponible: item.is_active,
     imagen:
@@ -107,6 +124,9 @@ onMounted(loadAircraft);
     <th>Imagen</th>
     <th>Nombre</th>
     <th>Categoría</th>
+    <th>Rental Price USD</th>
+    <th>Cruise Speed Knots</th>
+    <th>National Expenses USD</th>
     <th>Capacidad</th>
     <th>Disponible</th>
     <th>Acciones</th>
@@ -125,6 +145,9 @@ onMounted(loadAircraft);
 </td>
     <td>{{ item.nombre }}</td>
     <td>{{ item.categoria }}</td>
+    <td>{{ formatUsd(item.precio_renta_usd) }}</td>
+    <td>{{ item.velocidad_crucero_nudos || "-" }}</td>
+    <td>{{ formatUsd(item.gastos_nacionales_usd) }}</td>
     <td>{{ item.capacidad_pasajeros }}</td>
     <td>
       <span :class="item.disponible ? 'badge-active' : 'badge-inactive'">
@@ -179,11 +202,13 @@ h2 {
   border-radius: 12px;
   padding: 20px;
   box-shadow: var(--shadow-sm);
+  overflow-x: auto;
 }
 
 .styled-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 1260px;
 }
 
 .styled-table th {
@@ -198,6 +223,7 @@ h2 {
   padding: 12px;
   border-top: 1px solid var(--border-color);
   color: var(--text-main);
+  vertical-align: middle;
 }
 
 .btn-primary {
@@ -237,6 +263,15 @@ h2 {
   padding: 4px 8px;
   border-radius: 20px;
   font-size: 12px;
+}
+
+.thumbnail {
+  width: 84px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+  background: #eef2f7;
 }
 .thumbnail {
   width: 100px;

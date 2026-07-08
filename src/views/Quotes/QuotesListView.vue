@@ -30,14 +30,7 @@ async function fetchQuotes() {
         aircraft_id,
         estimated_price,
         start_date,
-        end_date,
-        aircraft_fleet (
-          id,
-          name,
-          cruise_speed_knots,
-          iata,
-          home_base
-        )
+        end_date
       )
     `)
     .order("created_at", { ascending: false });
@@ -133,13 +126,13 @@ function getTotalPrice(quote) {
   <section class="page">
     <header class="page-header">
       <div>
-        <h1>Cotizaciones</h1>
-        <p class="subtitle">Solicitudes del sitio y cotizaciones creadas desde admin</p>
+        <h1>Cotizaciones Web</h1>
+        <p class="subtitle">Solicitudes guardadas en las tablas `quotes` y `quote_routes`</p>
       </div>
 
       <div class="header-actions">
-        <RouterLink to="/quotes/flight/create" class="btn-create">
-          Nueva cotizacion de vuelo
+        <RouterLink to="/quotes/admin" class="btn-create">
+          Ir a cotizaciones admin de vuelo
         </RouterLink>
 
         <div class="header-badge">

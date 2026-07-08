@@ -28,9 +28,9 @@ const mainLinks = [
 ];
 
 const quoteLinks = [
-  { to: "/quotes", label: "Lista de cotizaciones" },
-  { to: "/quotes/admin", label: "Lista de cotizaciones admin" },
-  { to: "/quotes/flight/create", label: "Cotizacion de vuelo" },
+  { to: "/quotes", label: "Cotizaciones web" },
+  { to: "/quotes/admin", label: "Cotizaciones admin de vuelo" },
+  { to: "/quotes/flight/create", label: "Crear cotizacion de vuelo" },
   { to: "/quotes/validation", label: "Cola de validacion" },
   { to: "/quotes/inventory/create", label: "Cotizaciones de inventario" },
   { to: "/quotes/aviation-parts", label: "Partes de aviacion" },

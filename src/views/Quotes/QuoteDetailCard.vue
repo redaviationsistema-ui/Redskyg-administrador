@@ -88,7 +88,9 @@ const termsSections = [
 const termsPageOne = computed(() => termsSections.slice(0, 10));
 const termsPageTwo = computed(() => termsSections.slice(10));
 
-const customerRoutes = computed(() => props.quote?.quote_routes || []);
+const customerRoutes = computed(
+  () => props.quote?.quote_routes || props.quote?.flight_quote_legs || [],
+);
 const routes = computed(() => getDisplayQuoteLegs(props.quote));
 const firstRoute = computed(() => getPrimaryQuoteRoute(props.quote));
 const lastRoute = computed(() => getFinalQuoteRoute(props.quote));
@@ -121,12 +123,16 @@ const pdfFileName = computed(() => {
 
 const flightCost = computed(() =>
   customerRoutes.value.reduce(
-    (total, route) => total + (Number(route.estimated_price) || 0),
+    (total, route) => total + (Number(route.estimated_price ?? route.amount_usd) || 0),
     0,
   ),
 );
 
 const totalPrice = computed(() => {
+  if (props.quote?.total_usd != null) {
+    return Number(props.quote.total_usd) || 0;
+  }
+
   if (props.quote?.total_estimated_price != null) {
     return Number(props.quote.total_estimated_price) || 0;
   }
@@ -141,9 +147,9 @@ const operationalExpenses = computed(() =>
 const tripType = computed(() => props.quote?.flight_type || "Private Charter");
 
 const clientRows = computed(() => [
-  ["NAME", props.quote?.full_name || EMPTY_VALUE],
-  ["EMAIL", props.quote?.email || EMPTY_VALUE],
-  ["PHONE", props.quote?.phone || EMPTY_VALUE],
+  ["NAME", props.quote?.client_name || props.quote?.full_name || EMPTY_VALUE],
+  ["EMAIL", props.quote?.client_email || props.quote?.email || EMPTY_VALUE],
+  ["PHONE", props.quote?.client_phone || props.quote?.phone || EMPTY_VALUE],
 ]);
 
 const profileRows = computed(() => {

@@ -11,14 +11,7 @@ const QUOTE_SELECT = `
     aircraft_id,
     estimated_price,
     start_date,
-    end_date,
-    aircraft_fleet (
-      id,
-      name,
-      cruise_speed_knots,
-      iata,
-      home_base
-    )
+    end_date
   )
 `;
 
