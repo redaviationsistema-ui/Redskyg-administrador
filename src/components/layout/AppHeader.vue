@@ -1,4 +1,6 @@
 <script setup>
+import { useRouter } from "vue-router";
+
 defineProps({
   sidebarOpen: {
     type: Boolean,
@@ -13,6 +15,7 @@ import { useTheme } from "@/composables/useTheme";
 
 const auth = useAuthStore();
 const { theme, toggleTheme } = useTheme();
+const router = useRouter();
 </script>
 
 <template>
@@ -41,6 +44,21 @@ const { theme, toggleTheme } = useTheme();
       <div class="user-chip">
         <span class="user-label">Signed in as</span>
         <strong>{{ auth.user?.email || "admin@dev.local" }}</strong>
+        <small :class="['inventory-status', auth.inventoryUser ? 'inventory-ok' : 'inventory-warning']">
+          {{
+            auth.inventoryUser
+              ? `Inventory activo${auth.inventoryUser?.email ? `: ${auth.inventoryUser.email}` : ""}`
+              : auth.inventoryError || "Inventory no disponible; algunos modulos quedaran limitados"
+          }}
+        </small>
+        <button
+          v-if="!auth.inventoryUser"
+          type="button"
+          class="inventory-link"
+          @click="router.push('/inventory-login?redirect=/correos-masivos')"
+        >
+          Conectar Inventory
+        </button>
       </div>
 
       <button class="logout-btn" @click="auth.logout()">Sign out</button>
@@ -167,6 +185,32 @@ const { theme, toggleTheme } = useTheme();
 .user-chip strong {
   color: var(--text-strong);
   font-size: 13px;
+}
+
+.inventory-status {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.inventory-link {
+  margin-top: 8px;
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.inventory-ok {
+  color: var(--success);
+}
+
+.inventory-warning {
+  color: var(--warning);
 }
 
 @media (max-width: 900px) {

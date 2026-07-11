@@ -611,18 +611,30 @@ async function persistAircraftRecord() {
   const payload = buildAircraftPayload();
   const id = form.value.id;
 
-  const response = id
-    ? await supabase
-        .from("aircraft_fleet")
-        .update(payload)
-        .eq("id", id)
-        .select()
-        .single()
-    : await supabase
-        .from("aircraft_fleet")
-        .insert([payload])
-        .select()
-        .single();
+  if (id) {
+    const { error } = await supabase
+      .from("aircraft_fleet")
+      .update(payload)
+      .eq("id", id);
+
+    if (error) throw error;
+
+    const nextRecord = {
+      ...form.value,
+      ...payload,
+      id,
+      storage_folder: form.value.storage_folder || id,
+    };
+
+    form.value = nextRecord;
+    return nextRecord;
+  }
+
+  const response = await supabase
+    .from("aircraft_fleet")
+    .insert([payload])
+    .select()
+    .single();
 
   if (response.error) throw response.error;
 

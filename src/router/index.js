@@ -1,11 +1,17 @@
 import { createRouter, createWebHistory } from "vue-router";
 import MainLayout from "@/layouts/MainLayout.vue";
+import { getCurrentUser, getInventoryCurrentUser, hasAdminAccess } from "@/services/auth.service";
 
 const routes = [
   {
     path: "/login",
     name: "Login",
     component: () => import("@/views/Auth/LoginView.vue"),
+  },
+  {
+    path: "/inventory-login",
+    name: "InventoryLogin",
+    component: () => import("@/views/Auth/InventoryLoginView.vue"),
   },
 
   {
@@ -144,6 +150,33 @@ const routes = [
         path: "lookbooks",
         name: "LookbooksAdmin",
         component: () => import("@/views/Lookbooks/LookbooksAdminView.vue"),
+        meta: { requiresAdmin: true },
+      },
+      {
+        path: "correos-masivos",
+        name: "BulkEmailCampaigns",
+        component: () => import("@/features/bulk-email/views/BulkEmailCampaignsView.vue"),
+        meta: { requiresAdmin: true, requiresInventoryAuth: true },
+      },
+      {
+        path: "correos-masivos/nueva",
+        name: "BulkEmailCreate",
+        component: () => import("@/features/bulk-email/views/BulkEmailCreateView.vue"),
+        meta: { requiresAdmin: true, requiresInventoryAuth: true },
+      },
+      {
+        path: "correos-masivos/:id",
+        name: "BulkEmailDetail",
+        component: () => import("@/features/bulk-email/views/BulkEmailDetailView.vue"),
+        meta: { requiresAdmin: true, requiresInventoryAuth: true },
+        props: true,
+      },
+      {
+        path: "correos-masivos/:id/editar",
+        name: "BulkEmailEdit",
+        component: () => import("@/features/bulk-email/views/BulkEmailEditView.vue"),
+        meta: { requiresAdmin: true, requiresInventoryAuth: true },
+        props: true,
       },
       {
         path: "aircraft/new",
@@ -177,4 +210,46 @@ const router = createRouter({
   routes,
 });
 
+router.beforeEach(async (to) => {
+  if (to.path === "/inventory-login") {
+    const inventoryUser = await getInventoryCurrentUser();
+    if (inventoryUser) {
+      const redirect = typeof to.query.redirect === "string" ? to.query.redirect : "/correos-masivos";
+      return redirect;
+    }
+  }
+
+  const requiresAdmin = to.matched.some((record) => record.meta?.requiresAdmin);
+  const requiresInventoryAuth = to.matched.some((record) => record.meta?.requiresInventoryAuth);
+
+  if (!requiresAdmin && !requiresInventoryAuth) {
+    return true;
+  }
+
+  if (requiresAdmin) {
+    const user = await getCurrentUser();
+    if (!user) {
+      return {
+        path: "/login",
+        query: { redirect: to.fullPath },
+      };
+    }
+
+    if (!hasAdminAccess(user)) {
+      return { path: "/" };
+    }
+  }
+
+  if (requiresInventoryAuth) {
+    const inventoryUser = await getInventoryCurrentUser();
+    if (!inventoryUser) {
+      return {
+        path: "/inventory-login",
+        query: { redirect: to.fullPath },
+      };
+    }
+  }
+
+  return true;
+});
 export default router;

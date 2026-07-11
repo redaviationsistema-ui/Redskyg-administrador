@@ -4,6 +4,8 @@ import BaseButton from "@/components/ui/BaseButton.vue";
 defineProps({
   open: Boolean,
   title: { type: String, default: "Details" },
+  hideFooter: { type: Boolean, default: false },
+  maxWidth: { type: String, default: "680px" },
 });
 
 defineEmits(["close"]);
@@ -11,7 +13,7 @@ defineEmits(["close"]);
 
 <template>
   <div v-if="open" class="overlay" @click.self="$emit('close')">
-    <div class="modal">
+    <div class="modal" :style="{ width: `min(${maxWidth}, 100%)` }">
       <div class="modal-head">
         <h3>{{ title }}</h3>
       </div>
@@ -20,7 +22,7 @@ defineEmits(["close"]);
         <slot />
       </div>
 
-      <div class="actions">
+      <div v-if="!hideFooter" class="actions">
         <BaseButton variant="secondary" @click="$emit('close')">
           Close
         </BaseButton>
@@ -43,7 +45,6 @@ defineEmits(["close"]);
 }
 
 .modal {
-  width: min(680px, 100%);
   border-radius: 24px;
   border: 1px solid var(--border-color);
   background: var(--bg-surface-solid);

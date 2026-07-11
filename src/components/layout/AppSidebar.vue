@@ -1,7 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { useRoute, RouterLink } from "vue-router";
-import { supabaseInventory } from "../../supabase";
 
 defineProps({
   mobileOpen: {
@@ -16,12 +15,12 @@ const route = useRoute();
 const openQuotesWorkspace = ref(true);
 const openSalesFollowUp = ref(true);
 const openAircraftForms = ref(true);
-const responsables = ref([]);
 
 const mainLinks = [
   { to: "/", label: "Dashboard", hint: "Overview" },
   { to: "/aircraft", label: "Aircraft", hint: "Fleet" },
   { to: "/lookbooks", label: "Lookbooks", hint: "Library" },
+  { to: "/correos-masivos", label: "Correos masivos", hint: "Campaigns" },
   { to: "/airports", label: "Airports", hint: "Directory" },
   { to: "/nautical-miles", label: "Nautical Miles", hint: "Distance tools" },
   { to: "/routes", label: "Routes", hint: "Planning" },
@@ -41,36 +40,6 @@ const quoteSectionActive = computed(() => route.path.startsWith("/quotes"));
 const salesSectionActive = computed(() => route.path === "/quotes/follow-up");
 const aircraftFormsSectionActive = computed(() => route.path.startsWith("/aircraft-forms"));
 
-function getResponsableLabel(item) {
-  return (
-    item.nombre ||
-    item.name ||
-    item.full_name ||
-    item.responsable ||
-    item.email ||
-    item.id
-  );
-}
-
-async function loadResponsables() {
-  try {
-    const { data, error } = await supabaseInventory
-      .from("responsables")
-      .select("*");
-
-    if (error) throw error;
-
-    responsables.value = (data || []).map((item) => ({
-      id: item.id,
-      label: getResponsableLabel(item),
-    }));
-  } catch (error) {
-    console.error("Unable to load responsables", error);
-    responsables.value = [];
-  }
-}
-
-onMounted(loadResponsables);
 </script>
 
 <template>
