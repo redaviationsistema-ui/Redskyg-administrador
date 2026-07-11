@@ -14,6 +14,11 @@ const editingPdf = ref(false);
 const savingPdfEdit = ref(false);
 const pdfEditor = ref(null);
 
+function normalizePassengerCount(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 function formatDateTime(date) {
   if (!date) return "-";
 
@@ -59,13 +64,8 @@ function buildRouteSummaryLegs(quote) {
     distance_nm: 0,
     billable_hours: 0,
     amount_usd: 0,
-    passengers: normalizePassengers(quote?.passengers),
+    passengers: normalizePassengerCount(quote?.passengers) ?? "",
   }));
-}
-
-function normalizePassengers(value) {
-  const passengers = Number(value);
-  return Number.isFinite(passengers) && passengers > 0 ? passengers : null;
 }
 
 function buildSnapshotLegs(quote) {
@@ -105,7 +105,7 @@ function buildSnapshotLegs(quote) {
           leg?.billable_hours ?? leg?.billableHours ?? leg?.estimatedHours ?? 0,
         ),
         amount_usd: Number(leg?.amount_usd || 0),
-        passengers: normalizePassengers(leg?.passengers ?? quote?.passengers),
+        passengers: normalizePassengerCount(quote?.passengers ?? leg?.passengers) ?? "",
       };
     })
     .filter(Boolean)
@@ -220,6 +220,7 @@ function editPreviewQuote() {
   if (!pdfPreviewQuote.value?.id) return;
 
   pdfEditor.value = buildPdfEditorState(pdfPreviewQuote.value);
+  syncCurrencyTotals();
   recalculateTaxBreakdown();
   editingPdf.value = true;
 }
@@ -272,7 +273,7 @@ function buildPdfEditorState(quote) {
     return_at: quote.return_at || null,
     route_summary: quote.route_summary || "",
     operation_type: quote.operation_type || "national",
-    passengers: normalizePassengers(quote.passengers),
+    passengers: normalizePassengerCount(quote.passengers) ?? "",
     client_flight_hours: Number(quote.client_flight_hours || 0),
     hourly_rate_usd: Number(quote.hourly_rate_usd || 0),
     flight_cost_usd: Number(quote.flight_cost_usd || 0),
@@ -284,9 +285,11 @@ function buildPdfEditorState(quote) {
     total_usd: Number(quote.total_usd || 0),
     exchange_rate: Number(quote.exchange_rate || 0),
     total_mxn: Number(quote.total_mxn || 0),
-    show_total_mxn:
-      quote.calculation_snapshot?.pdfTotals?.show_total_mxn ??
-      Number(quote.total_mxn || quote.calculation_snapshot?.pdfTotals?.total_mxn || 0) > 0,
+    show_mxn_in_pdf: Boolean(
+      quote.calculation_snapshot?.show_mxn_in_pdf ??
+        quote.calculation_snapshot?.pdfTotals?.show_total_mxn ??
+        Number(quote.total_mxn || quote.calculation_snapshot?.pdfTotals?.total_mxn || 0) > 0,
+    ),
     notes: quote.notes || null,
     calculation_version: quote.calculation_version || "v1",
     breakdownRows,
@@ -301,7 +304,7 @@ function buildPdfEditorState(quote) {
       billable_hours: Number(leg.billable_hours || 0),
       billable_hours_input: formatHoursToTimeInput(leg.billable_hours),
       amount_usd: Number(leg.amount_usd || 0),
-      passengers: normalizePassengers(leg.passengers ?? quote.passengers),
+      passengers: normalizePassengerCount(quote.passengers ?? leg.passengers) ?? "",
     })),
   };
 }
@@ -311,11 +314,28 @@ function closePdfEditor() {
   pdfEditor.value = null;
 }
 
+function syncCurrencyTotals() {
+  if (!pdfEditor.value) return;
+
+  const totalUsd = Number(pdfEditor.value.total_usd || 0);
+  const exchangeRate = Number(pdfEditor.value.exchange_rate || 0);
+  pdfEditor.value.total_mxn =
+    exchangeRate > 0 ? Number((totalUsd * exchangeRate).toFixed(2)) : 0;
+}
+
 function updateEditorTotal() {
   if (!pdfEditor.value) return;
 
   pdfEditor.value.total_usd = Number(pdfEditor.value.total_usd || 0);
+  syncCurrencyTotals();
   recalculateTaxBreakdown();
+}
+
+function updateEditorExchangeRate() {
+  if (!pdfEditor.value) return;
+
+  pdfEditor.value.exchange_rate = Number(pdfEditor.value.exchange_rate || 0);
+  syncCurrencyTotals();
 }
 
 function isTaxBreakdownRow(row) {
@@ -373,24 +393,8 @@ function getBreakdownSubtotal() {
     .reduce((sum, row) => sum + Number(row.value || 0), 0);
 }
 
-function getEditorPassengers() {
-  return normalizePassengers(pdfEditor.value?.passengers);
-}
-
-function syncEditorLegPassengers() {
-  if (!pdfEditor.value) return;
-
-  const passengers = getEditorPassengers();
-  pdfEditor.value.passengers = passengers;
-  pdfEditor.value.legs.forEach((leg) => {
-    leg.passengers = passengers;
-  });
-}
-
 function buildPdfCalculationSnapshot() {
   if (!pdfEditor.value) return {};
-
-  const passengers = getEditorPassengers();
 
   return {
     ...(pdfPreviewQuote.value?.calculation_snapshot || {}),
@@ -408,7 +412,7 @@ function buildPdfCalculationSnapshot() {
       distance_nm: Number(leg.distance_nm || 0),
       billable_hours: Number(leg.billable_hours || 0),
       amount_usd: Number(leg.amount_usd || 0),
-      passengers,
+      passengers: normalizePassengerCount(pdfEditor.value.passengers ?? leg.passengers),
     })),
     pdfTotals: {
       client_flight_hours: Number(pdfEditor.value.client_flight_hours || 0),
@@ -421,11 +425,12 @@ function buildPdfCalculationSnapshot() {
       tax_amount_usd: Number(pdfEditor.value.tax_amount_usd || 0),
       total_usd: Number(pdfEditor.value.total_usd || 0),
       exchange_rate: Number(pdfEditor.value.exchange_rate || 0),
-      total_mxn: pdfEditor.value.show_total_mxn
+      total_mxn: pdfEditor.value.show_mxn_in_pdf
         ? Number(pdfEditor.value.total_mxn || 0)
         : 0,
-      show_total_mxn: Boolean(pdfEditor.value.show_total_mxn),
+      show_total_mxn: Boolean(pdfEditor.value.show_mxn_in_pdf),
     },
+    show_mxn_in_pdf: Boolean(pdfEditor.value.show_mxn_in_pdf),
   };
 }
 
@@ -460,7 +465,7 @@ function addEditorLeg() {
     billable_hours: 1,
     billable_hours_input: "01:00",
     amount_usd: 0,
-    passengers: getEditorPassengers(),
+    passengers: normalizePassengerCount(pdfEditor.value.passengers),
   });
 }
 
@@ -510,24 +515,17 @@ async function savePdfEditor() {
   savingPdfEdit.value = true;
 
   try {
-    syncEditorLegPassengers();
-
     const routeSummary =
       pdfEditor.value.route_summary.trim() ||
       buildRouteSummaryFromLegs(pdfEditor.value.legs);
-    const passengers = getEditorPassengers();
     const subtotalUsd = getBreakdownSubtotal();
     const taxAmountUsd = Number(pdfEditor.value.tax_amount_usd || 0);
     const totalUsd = Number(pdfEditor.value.total_usd || 0);
-    if (!pdfEditor.value.show_total_mxn) {
+    if (!pdfEditor.value.show_mxn_in_pdf) {
       pdfEditor.value.total_mxn = 0;
     }
-    const exchangeRate = Number(
-      pdfPreviewQuote.value?.exchange_rate ||
-      selectedQuote.value?.exchange_rate ||
-      0,
-    );
-    const showTotalMxn = Boolean(pdfEditor.value.show_total_mxn);
+    const exchangeRate = Number(pdfEditor.value.exchange_rate || 0);
+    const showTotalMxn = Boolean(pdfEditor.value.show_mxn_in_pdf);
     const totalMxn = showTotalMxn ? Number(pdfEditor.value.total_mxn || 0) || null : null;
     const taxRate = subtotalUsd > 0 ? Number((taxAmountUsd / subtotalUsd).toFixed(4)) : 0;
     const billableHours = pdfEditor.value.legs.reduce(
@@ -557,7 +555,7 @@ async function savePdfEditor() {
       return_at: pdfEditor.value.return_at || null,
       route_summary: routeSummary,
       operation_type: pdfEditor.value.operation_type,
-      passengers,
+      passengers: normalizePassengerCount(pdfEditor.value.passengers),
       client_flight_hours: Number(pdfEditor.value.client_flight_hours || 0),
       hourly_rate_usd: Number(pdfEditor.value.hourly_rate_usd || 0),
       flight_cost_usd: Number(pdfEditor.value.flight_cost_usd || 0),
@@ -571,7 +569,7 @@ async function savePdfEditor() {
       total_usd: totalUsd,
       exchange_rate: exchangeRate || null,
       total_mxn: totalMxn,
-      notes: String(pdfEditor.value.notes || "").trim() || null,
+      notes: pdfEditor.value.notes || null,
       calculation_version: pdfEditor.value.calculation_version || "v1",
       billable_hours: billableHours,
       total_distance_nm: totalDistance,
@@ -613,7 +611,7 @@ async function savePdfEditor() {
         distance_nm: Number(leg.distance_nm || 0),
         billable_hours: Number(leg.billable_hours || 0),
         amount_usd: Number(leg.amount_usd || 0),
-        passengers,
+        passengers: normalizePassengerCount(pdfEditor.value.passengers ?? leg.passengers),
       }));
 
     if (legsPayload.length) {
@@ -834,6 +832,8 @@ onBeforeUnmount(() => {
               <h3>Client Information</h3>
               <label>NAME</label>
               <input v-model="pdfEditor.client_name" />
+              <label>EMAIL</label>
+              <input v-model="pdfEditor.client_email" />
               <label>PHONE</label>
               <input v-model="pdfEditor.client_phone" />
             </article>
@@ -851,13 +851,7 @@ onBeforeUnmount(() => {
                 <option value="international">International Charter</option>
               </select>
               <label>PASSENGERS</label>
-              <input
-                v-model.number="pdfEditor.passengers"
-                type="number"
-                min="1"
-                placeholder="Opcional"
-                @input="syncEditorLegPassengers"
-              />
+              <input v-model.number="pdfEditor.passengers" type="number" min="1" />
             </article>
           </section>
 
@@ -934,43 +928,49 @@ onBeforeUnmount(() => {
             </button>
           </section>
 
-          <section class="pdf-edit-section">
-            <h3><span></span>Notes</h3>
-            <textarea
-              v-model="pdfEditor.notes"
-              class="pdf-notes-input"
-              rows="4"
-              placeholder="Escribe notas adicionales para mostrar en el PDF"
-            ></textarea>
-          </section>
-
           <section class="pdf-edit-total">
-            <div>
+            <div class="pdf-edit-total-copy">
               <strong>TOTAL ESTIMATED BALANCE</strong>
               <small>Estimated in USD, subject to itinerary confirmation</small>
+              <small v-if="pdfEditor.show_mxn_in_pdf && Number(pdfEditor.exchange_rate || 0) > 0">
+                Total en MXN: {{ money(pdfEditor.total_mxn, "MXN") }}
+              </small>
             </div>
-            <div class="pdf-total-fields">
-              <label class="pdf-total-toggle">
-                <input v-model="pdfEditor.show_total_mxn" type="checkbox" />
-                <span>Mostrar MXN en PDF</span>
-              </label>
-              <label v-if="pdfEditor.show_total_mxn">
-                <span>Valor total MXN</span>
+            <div class="pdf-edit-total-fields">
+              <label class="pdf-total-field">
+                <span>Total USD</span>
                 <input
-                  v-model.number="pdfEditor.total_mxn"
+                  v-model.number="pdfEditor.total_usd"
                   type="number"
                   min="0"
                   step="0.01"
+                  @input="updateEditorTotal"
                 />
               </label>
-              <input
-                v-model.number="pdfEditor.total_usd"
-                type="number"
-                min="0"
-                step="0.01"
-                @input="updateEditorTotal"
-              />
+              <label class="pdf-total-field">
+                <span>Multiplicador manual</span>
+                <input
+                  v-model.number="pdfEditor.exchange_rate"
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  placeholder="17.50"
+                  @input="updateEditorExchangeRate"
+                />
+              </label>
+              <label class="pdf-total-field is-readonly">
+                <span>Total MXN</span>
+                <input :value="money(pdfEditor.total_mxn, 'MXN')" type="text" readonly />
+              </label>
             </div>
+            <button
+              class="pdf-mxn-toggle"
+              type="button"
+              :class="{ active: pdfEditor.show_mxn_in_pdf }"
+              @click="pdfEditor.show_mxn_in_pdf = !pdfEditor.show_mxn_in_pdf"
+            >
+              {{ pdfEditor.show_mxn_in_pdf ? "Mostrar MXN en PDF: SI" : "Mostrar MXN en PDF: NO" }}
+            </button>
           </section>
 
           <div class="pdf-edit-footer-actions">
@@ -1335,7 +1335,6 @@ h3 {
 .pdf-edit-card select,
 .pdf-edit-table input,
 .pdf-edit-breakdown input,
-.pdf-notes-input,
 .pdf-edit-total input {
   width: 100%;
   border: 1px solid transparent;
@@ -1351,7 +1350,6 @@ h3 {
 .pdf-edit-card select:focus,
 .pdf-edit-table input:focus,
 .pdf-edit-breakdown input:focus,
-.pdf-notes-input:focus,
 .pdf-edit-total input:focus {
   border-color: #0f5fa6;
   outline: none;
@@ -1456,17 +1454,12 @@ h3 {
   font-weight: 900;
 }
 
-.pdf-notes-input {
-  min-height: 96px;
-  resize: vertical;
-  line-height: 1.45;
-}
-
 .pdf-edit-total {
   margin-top: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 18px;
   padding: 18px 22px;
   border-top: 4px solid #bf893e;
@@ -1480,14 +1473,37 @@ h3 {
   display: block;
 }
 
+.pdf-edit-total-copy {
+  min-width: 0;
+}
+
 .pdf-edit-total small {
   margin-top: 7px;
   color: rgba(255, 255, 255, 0.74);
   font-size: 11px;
 }
 
+.pdf-edit-total-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 210px));
+  gap: 12px;
+}
+
+.pdf-total-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pdf-total-field span {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.8);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .pdf-edit-total input {
-  max-width: 210px;
   background: rgba(255, 255, 255, 0.08);
   color: white;
   font-size: 24px;
@@ -1495,42 +1511,24 @@ h3 {
   text-align: right;
 }
 
-.pdf-total-fields {
-  display: grid;
-  gap: 10px;
-  justify-items: end;
+.pdf-total-field.is-readonly input {
+  color: rgba(255, 255, 255, 0.9);
 }
 
-.pdf-total-fields label {
-  display: grid;
-  gap: 5px;
-  color: rgba(255, 255, 255, 0.74);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  text-align: right;
-  text-transform: uppercase;
-}
-
-.pdf-total-fields .pdf-total-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+.pdf-mxn-toggle {
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.pdf-total-toggle input {
-  width: 16px;
-  max-width: 16px;
-  height: 16px;
-  padding: 0;
-  accent-color: #bf893e;
-}
-
-.pdf-total-fields label input {
-  max-width: 160px;
-  font-size: 16px;
+.pdf-mxn-toggle.active {
+  background: #bf893e;
+  border-color: #bf893e;
+  color: #0a1f33;
 }
 
 .pdf-edit-total input:focus {
@@ -1608,8 +1606,14 @@ h3 {
     align-items: stretch;
   }
 
+  .pdf-edit-total-fields {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
   .pdf-edit-total input {
     max-width: none;
+    width: 100%;
   }
 
   .pdf-preview-actions,

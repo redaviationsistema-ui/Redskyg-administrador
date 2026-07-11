@@ -322,15 +322,6 @@ function getTripType(quote) {
     : "National Charter";
 }
 
-function getPassengers(value) {
-  const passengers = Number(value);
-  return Number.isFinite(passengers) && passengers > 0 ? String(passengers) : null;
-}
-
-function getQuoteNotes(quote) {
-  return String(quote?.notes || "").trim();
-}
-
 function getQuoteCostRows(quote, customerRoutes) {
   const customRows = quote?.calculation_snapshot?.pdfBreakdownRows;
 
@@ -599,18 +590,10 @@ export async function generateFlightQuotePdf(quote) {
   const tripType = getTripType(quote);
   const costRows = getQuoteCostRows(quote, customerRoutes);
   const total = getQuoteTotal(quote, costRows);
-  const totalMxn = Number(
-    quote?.total_mxn ||
-      quote?.calculation_snapshot?.pdfTotals?.total_mxn ||
-      0,
-  );
-  const showTotalMxnPreference = quote?.calculation_snapshot?.pdfTotals?.show_total_mxn;
-  const hasTotalMxn = Number.isFinite(totalMxn) && totalMxn > 0;
-  const showTotalMxn =
-    showTotalMxnPreference === undefined
-      ? hasTotalMxn
-      : Boolean(showTotalMxnPreference) && hasTotalMxn;
-  const notes = getQuoteNotes(quote);
+  const exchangeRate = Number(quote?.exchange_rate || 0);
+  const totalMxn =
+    Number(quote?.total_mxn || 0) || (exchangeRate > 0 ? Number((total * exchangeRate).toFixed(2)) : 0);
+  const showMxnInPdf = Boolean(quote?.calculation_snapshot?.show_mxn_in_pdf);
   const logo = await loadLogo();
 
   drawTopBand(doc);
@@ -618,17 +601,16 @@ export async function generateFlightQuotePdf(quote) {
 
   const clientRows = [
     ["Name", quote?.full_name || quote?.client_name || "-"],
+    ["Email", quote?.email || quote?.client_email || "-"],
+    ["Phone", quote?.phone || quote?.client_phone || "-"],
   ];
+  const passengerCount = Number(firstRoute?.passengers ?? quote?.passengers ?? 0);
   const profileRows = [
     ["Aircraft", aircraftName],
     ["Route", getQuoteRoutePath(quote)],
     ["Trip Type", tripType],
-  ];
-  const passengers = getPassengers(firstRoute?.passengers ?? quote?.passengers);
-
-  if (passengers) {
-    profileRows.push(["Passengers", passengers]);
-  }
+    passengerCount > 0 ? ["Passengers", String(passengerCount)] : null,
+  ].filter(Boolean);
 
   const infoCardsY = headerBottomY + 4.5;
   drawInfoCard(doc, "Client Information", clientRows, 20, infoCardsY, 82, 50);
@@ -689,7 +671,7 @@ export async function generateFlightQuotePdf(quote) {
   }
 
   const breakdownHeight = 13 + costRows.length * 5.8;
-  const totalBlockHeight = showTotalMxn ? 22 : 17;
+  const totalBlockHeight = showMxnInPdf && exchangeRate > 0 ? 28 : 20;
   const requiredHeight = 9 + 9 + breakdownHeight + 9 + totalBlockHeight;
 
   y += 7;
@@ -741,71 +723,27 @@ export async function generateFlightQuotePdf(quote) {
   doc.setFillColor(...COLORS.gold);
   doc.rect(20, y - 2, 170, 2, "F");
   doc.setFillColor(...COLORS.accent);
-  doc.roundedRect(20, y, 170, totalBlockHeight, 2, 2, "F");
+  doc.roundedRect(20, y, 170, totalBlockHeight, 3, 3, "F");
+  doc.setFillColor(37, 57, 79);
+  doc.roundedRect(137, y + 4, 48, 10.5, 2.5, 2.5, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.4);
+  doc.setFontSize(5.8);
   doc.setTextColor(...COLORS.white);
-  doc.text("TOTAL ESTIMATED BALANCE", 26, y + 6.6);
+  doc.text("SUMMARY", 26, y + 5.4);
+  doc.setFontSize(8.6);
+  doc.text("TOTAL ESTIMATED BALANCE", 26, y + 10.6);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(5.9);
-  doc.text("Estimated in USD, subject to itinerary confirmation", 26, y + 11.7);
-
-  if (showTotalMxn) {
-    doc.setFontSize(7.2);
-    doc.text("Valor total USD:", 120, y + 7.4);
-    doc.text("Valor total MXN:", 120, y + 14.4);
-    doc.setFontSize(8.1);
+  doc.text("Estimated in USD, subject to itinerary confirmation", 26, y + 16.2);
+  doc.setFontSize(11.8);
+  doc.setFont("helvetica", "bold");
+  doc.text(`${formatMoney(total)} USD`, 181.5, y + 11.3, { align: "right" });
+  if (showMxnInPdf && exchangeRate > 0) {
     doc.setFont("helvetica", "bold");
-    doc.text(`${formatMoney(total)} USD`, 185, y + 7.4, { align: "right" });
-    doc.text(`${formatMoney(totalMxn)} MXN`, 185, y + 14.4, { align: "right" });
-  } else {
-    doc.setFontSize(14.5);
-    doc.setFont("helvetica", "bold");
-    doc.text(`${formatMoney(total)} USD`, 185, y + 10.9, { align: "right" });
-  }
-
-  y += totalBlockHeight + 9;
-
-  if (notes) {
-    const noteLines = doc.splitTextToSize(notes, 158);
-    let lineIndex = 0;
-    let hasDrawnNotesTitle = false;
-
-    while (lineIndex < noteLines.length) {
-      if (y + 28 > FIRST_PAGE_CONTENT_MAX_Y) {
-        prepareContinuationPage(doc);
-        y = 28;
-        hasDrawnNotesTitle = false;
-      }
-
-      if (!hasDrawnNotesTitle) {
-        drawSectionTitle(doc, "Notes", 20, y);
-        y += 9;
-        hasDrawnNotesTitle = true;
-      }
-
-      const availableHeight = FIRST_PAGE_CONTENT_MAX_Y - y;
-      const maxLines = Math.max(1, Math.floor((availableHeight - 14) / 4.2));
-      const lines = noteLines.slice(lineIndex, lineIndex + maxLines);
-      const notesHeight = Math.max(22, 14 + lines.length * 4.2);
-
-      doc.setDrawColor(...COLORS.line);
-      doc.setFillColor(...COLORS.panel);
-      doc.roundedRect(20, y, 170, notesHeight, 4, 4, "FD");
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(7.5);
-      doc.setTextColor(...COLORS.ink);
-      doc.text(lines, 26, y + 10);
-
-      y += notesHeight + 6;
-      lineIndex += lines.length;
-
-      if (lineIndex < noteLines.length) {
-        prepareContinuationPage(doc);
-        y = 28;
-        hasDrawnNotesTitle = false;
-      }
-    }
+    doc.setFontSize(11.8);
+    doc.text(`${formatMoney(totalMxn)} MXN`, 181.5, y + 20.6, {
+      align: "right",
+    });
   }
 
   doc.addPage();

@@ -35,8 +35,13 @@ function emptyRoute() {
   return {
     from_airport: "",
     to_airport: "",
-    passengers: 1,
+    passengers: "",
   };
+}
+
+function normalizePassengerCount(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function normalize(value) {
@@ -268,7 +273,7 @@ function buildPositioningRoute(aircraftId, fromAirport, toAirport, positioningTy
     aircraft_id: aircraftId,
     from_airport: fromAirport,
     to_airport: toAirport,
-    passengers: 1,
+    passengers: null,
     positioning: true,
     positioningType,
   };
@@ -499,7 +504,7 @@ function calculateFlightQuote(input) {
       aircraft_id: input.aircraftId,
       from_airport: normalize(routeItem.from_airport),
       to_airport: normalize(routeItem.to_airport),
-      passengers: Number(routeItem.passengers) || 1,
+      passengers: normalizePassengerCount(routeItem.passengers),
       ...breakdown,
     };
   });
@@ -511,7 +516,7 @@ function calculateFlightQuote(input) {
       ...routeItem,
       from_airport: normalize(routeItem.from_airport),
       to_airport: normalize(routeItem.to_airport),
-      passengers: Number(routeItem.passengers) || 1,
+      passengers: normalizePassengerCount(routeItem.passengers),
       ...breakdown,
     };
   });
@@ -769,7 +774,7 @@ function buildFlightQuotePayload(userId = null) {
     aircraft_base: meta.baseAirport || aircraft.home_base || null,
     departure_at: toIsoOrNull(form.value.departure_at),
     return_at: toIsoOrNull(form.value.return_at),
-    passengers: Number(validRoutes.value[0]?.passengers) || 1,
+    passengers: normalizePassengerCount(validRoutes.value[0]?.passengers),
     route_summary: routePreview.value,
     total_distance_nm: Number(totalDistanceNm.toFixed(2)),
     client_flight_hours: totals.clientFlightHours,
@@ -827,7 +832,7 @@ function buildFlightQuoteLegPayloads(quoteId) {
       minimum_hours: leg.minimumHours,
       hourly_rate_usd: leg.hourlyRate,
       amount_usd: leg.flightCost,
-      passengers: leg.passengers || 1,
+      passengers: normalizePassengerCount(leg.passengers),
     };
   });
 }
@@ -838,7 +843,7 @@ function addRoute() {
   routeItems.value.push({
     from_airport: previous.to_airport || "",
     to_airport: "",
-    passengers: previous.passengers || 1,
+    passengers: normalizePassengerCount(previous.passengers) ?? "",
     aircraft_id: selectedAircraftId.value || "",
   });
 }
@@ -936,7 +941,7 @@ function getEditableLegsFromQuote(quote) {
     return savedLegs.map((leg) => ({
       from_airport: normalize(leg.from_iata || leg.from_icao),
       to_airport: normalize(leg.to_iata || leg.to_icao),
-      passengers: Number(leg.passengers || quote.passengers || 1),
+      passengers: normalizePassengerCount(leg.passengers ?? quote.passengers) ?? "",
       aircraft_id: quote.aircraft_id || "",
     }));
   }
@@ -958,7 +963,7 @@ function getEditableLegsFromQuote(quote) {
   return editableCodes.slice(0, -1).map((fromAirport, index) => ({
     from_airport: fromAirport,
     to_airport: editableCodes[index + 1],
-    passengers: Number(quote.passengers || 1),
+    passengers: normalizePassengerCount(quote.passengers) ?? "",
     aircraft_id: quote.aircraft_id || "",
   }));
 }
@@ -1033,7 +1038,7 @@ function handleCalculateQuote() {
       routes: validRoutes.value,
       departureAt: form.value.departure_at,
       returnAt: form.value.return_at,
-      passengers: Number(validRoutes.value[0]?.passengers) || 1,
+      passengers: normalizePassengerCount(validRoutes.value[0]?.passengers),
       quoteMode: form.value.quote_mode,
       calculationMode: "block",
       exchangeRate: DEFAULT_EXCHANGE_RATE,
@@ -1127,14 +1132,28 @@ function downloadQuotePreviewPdf() {
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text(`Cliente: ${form.value.full_name || "-"}`, 14, 30);
-  doc.text(`Aeronave: ${aircraft?.name || "-"}`, 14, 36);
-  doc.text(`Ruta: ${routePreview.value}`, 14, 42);
-  doc.text(`Pasajeros: ${validRoutes.value[0]?.passengers || 1}`, 14, 48);
-  doc.text(`Salida: ${form.value.departure_at || "-"}`, 14, 54);
-  doc.text(`Regreso: ${form.value.return_at || "-"}`, 14, 60);
-  doc.text(`Modo: ${meta.quoteModeLabel}`, 14, 66);
-  doc.text(`Tiempo: ${meta.calculationModeLabel}`, 14, 72);
+  const passengerCount = normalizePassengerCount(validRoutes.value[0]?.passengers);
+  let infoY = 30;
+
+  doc.text(`Cliente: ${form.value.full_name || "-"}`, 14, infoY);
+  infoY += 6;
+  doc.text(`Aeronave: ${aircraft?.name || "-"}`, 14, infoY);
+  infoY += 6;
+  doc.text(`Ruta: ${routePreview.value}`, 14, infoY);
+  infoY += 6;
+
+  if (passengerCount) {
+    doc.text(`Pasajeros: ${passengerCount}`, 14, infoY);
+    infoY += 6;
+  }
+
+  doc.text(`Salida: ${form.value.departure_at || "-"}`, 14, infoY);
+  infoY += 6;
+  doc.text(`Regreso: ${form.value.return_at || "-"}`, 14, infoY);
+  infoY += 6;
+  doc.text(`Modo: ${meta.quoteModeLabel}`, 14, infoY);
+  infoY += 6;
+  doc.text(`Tiempo: ${meta.calculationModeLabel}`, 14, infoY);
 
   doc.setFont("helvetica", "bold");
   doc.text("Totales", 14, 86);
@@ -1251,7 +1270,7 @@ onMounted(async () => {
               <select v-model="routeItems[0].aircraft_id">
                 <option value="">Selecciona una aeronave</option>
                 <option v-for="aircraft in filteredFleet" :key="aircraft.id" :value="aircraft.id">
-                  {{ aircraft.name }} · {{ aircraft.capacity_passengers }} pax · Base {{ aircraft.home_base }}
+                  {{ aircraft.name }} · {{ aircraft.capacity_passengers }} pasajeros  {{ aircraft.iata || "-" }}
                 </option>
               </select>
             </label>
@@ -1320,7 +1339,7 @@ onMounted(async () => {
                     v-model="routeItem.passengers"
                     type="number"
                     min="1"
-                    :max="selectedAircraft?.capacity_passengers || 20"
+                    :max="selectedAircraft?.capacity_passengers || undefined"
                   />
                 </label>
 

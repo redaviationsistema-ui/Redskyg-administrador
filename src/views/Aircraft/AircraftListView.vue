@@ -7,36 +7,56 @@ const router = useRouter();
 const aeronaves = ref([]);
 const loading = ref(false);
 
-/* ===================================
-   CONSTRUIR DATA URL CORRECTAMENTE
-=================================== */
-const buildImageUrl = (base64String, mimeType) => {
-  if (!base64String) return null;
+const formatUsd = (value) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "-";
 
-  // Si ya viene como dataURL completo
-  if (base64String.startsWith("data:")) {
-    return base64String;
-  }
-
-  return `data:${mimeType || "image/png"};base64,${base64String}`;
+  return amount.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+  });
 };
 
+const getGalleryImage = (images) => {
+  if (!Array.isArray(images) || !images.length) return null;
+
+  const firstImage = images[0];
+
+  if (typeof firstImage === "string") {
+    return firstImage;
+  }
+
+  if (firstImage && typeof firstImage === "object") {
+    return (
+      firstImage.url ||
+      firstImage.imagen_url ||
+      firstImage.publicUrl ||
+      null
+    );
+  }
+
+  return null;
+};
 
 const loadAircraft = async () => {
   loading.value = true;
 
   const { data, error } = await supabase
-    .from("aircraft_fleet")
-    .select(`
-      id,
-      name,
-      aircraft_type,
-      capacity_passengers,
-      is_active,
-      aeronave_imagenes!fk_aircraft (
-        imagen_url
-      )
-    `);
+  .from("aircraft_fleet")
+  .select(`
+    id,
+    name,
+    aircraft_type,
+    rental_price_usd,
+    cruise_speed_knots,
+    national_expenses_usd,
+    capacity_passengers,
+    is_active,
+    imagen_url,
+    exterior_images,
+    interior_images
+  `);
 
   if (error) {
     console.error(error);
@@ -48,9 +68,15 @@ const loadAircraft = async () => {
     id: item.id,
     nombre: item.name,
     categoria: item.aircraft_type,
+    precio_renta_usd: item.rental_price_usd,
+    velocidad_crucero_nudos: item.cruise_speed_knots,
+    gastos_nacionales_usd: item.national_expenses_usd,
     capacidad_pasajeros: item.capacity_passengers,
     disponible: item.is_active,
-    imagen: item.aeronave_imagenes?.[0]?.imagen_url || null
+    imagen:
+      item.imagen_url ||
+      getGalleryImage(item.exterior_images) ||
+      getGalleryImage(item.interior_images)
   }));
 
   loading.value = false;
@@ -65,7 +91,7 @@ const deleteAircraft = async (id) => {
   loading.value = true;
 
   const { error } = await supabase
-    .from("foto_aeronaves")
+    .from("aircraft_fleet")
     .delete()
     .eq("id", id);
 
@@ -98,6 +124,9 @@ onMounted(loadAircraft);
     <th>Imagen</th>
     <th>Nombre</th>
     <th>Categoría</th>
+    <th>Rental Price USD</th>
+    <th>Cruise Speed Knots</th>
+    <th>National Expenses USD</th>
     <th>Capacidad</th>
     <th>Disponible</th>
     <th>Acciones</th>
@@ -116,6 +145,9 @@ onMounted(loadAircraft);
 </td>
     <td>{{ item.nombre }}</td>
     <td>{{ item.categoria }}</td>
+    <td>{{ formatUsd(item.precio_renta_usd) }}</td>
+    <td>{{ item.velocidad_crucero_nudos || "-" }}</td>
+    <td>{{ formatUsd(item.gastos_nacionales_usd) }}</td>
     <td>{{ item.capacidad_pasajeros }}</td>
     <td>
       <span :class="item.disponible ? 'badge-active' : 'badge-inactive'">
@@ -170,11 +202,13 @@ h2 {
   border-radius: 12px;
   padding: 20px;
   box-shadow: var(--shadow-sm);
+  overflow-x: auto;
 }
 
 .styled-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 1260px;
 }
 
 .styled-table th {
@@ -189,6 +223,7 @@ h2 {
   padding: 12px;
   border-top: 1px solid var(--border-color);
   color: var(--text-main);
+  vertical-align: middle;
 }
 
 .btn-primary {
@@ -228,6 +263,15 @@ h2 {
   padding: 4px 8px;
   border-radius: 20px;
   font-size: 12px;
+}
+
+.thumbnail {
+  width: 84px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+  background: #eef2f7;
 }
 .thumbnail {
   width: 100px;

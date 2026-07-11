@@ -141,6 +141,11 @@ const routes = [
         component: () => import("@/views/Aircraft/AircraftListView.vue"),
       },
       {
+        path: "lookbooks",
+        name: "LookbooksAdmin",
+        component: () => import("@/views/Lookbooks/LookbooksAdminView.vue"),
+      },
+      {
         path: "aircraft/new",
         name: "AircraftNew",
         component: () => import("@/views/Aircraft/AircraftFormView.vue"),
@@ -158,7 +163,7 @@ const routes = [
         props: true,
       },
       {
-        path: "aircraft/:id(\\d+)",
+        path: "aircraft/:id",
         name: "AircraftDetail",
         component: () => import("@/views/Aircraft/AircraftDetailView.vue"),
         props: true,
