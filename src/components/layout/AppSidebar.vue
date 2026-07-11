@@ -21,6 +21,7 @@ const responsables = ref([]);
 const mainLinks = [
   { to: "/", label: "Dashboard", hint: "Overview" },
   { to: "/aircraft", label: "Aircraft", hint: "Fleet" },
+  { to: "/lookbooks", label: "Lookbooks", hint: "Library" },
   { to: "/airports", label: "Airports", hint: "Directory" },
   { to: "/nautical-miles", label: "Nautical Miles", hint: "Distance tools" },
   { to: "/routes", label: "Routes", hint: "Planning" },
@@ -185,14 +186,6 @@ onMounted(loadResponsables);
             Respuestas
           </RouterLink>
         </div>
-      </div>
-
-      <div class="sidebar-card">
-        <span class="sidebar-card-label">Operations</span>
-        <strong>Professional admin workspace</strong>
-        <p>
-          Quote management, aircraft data and operational follow-up in one place.
-        </p>
       </div>
     </div>
   </aside>
