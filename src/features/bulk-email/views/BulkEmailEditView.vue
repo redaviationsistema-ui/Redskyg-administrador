@@ -1,10 +1,9 @@
 <script setup>
 import { onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import BaseButton from "@/components/ui/BaseButton.vue";
 import { useFeedback } from "@/composables/useFeedback";
 import BulkEmailCampaignForm from "../components/BulkEmailCampaignForm.vue";
-import { sendTestCampaign, startAndProcessCampaign } from "../services/bulkEmailApi.service";
+import { sendCampaignToAll, sendTestCampaign } from "../services/bulkEmailApi.service";
 import { getCampaignById, updateCampaign } from "../services/bulkEmail.service";
 import { buildBulkEmailApiPayload } from "../utils/bulkEmailTemplate";
 
@@ -15,6 +14,13 @@ const feedback = useFeedback();
 const loading = ref(true);
 const campaign = ref(null);
 const saving = ref(false);
+const sending = ref(false);
+const sendingProgress = ref({
+  current: 0,
+  total: 0,
+  sent: 0,
+  failed: 0,
+});
 
 async function loadCampaign() {
   loading.value = true;
@@ -41,17 +47,34 @@ async function saveDraft(values) {
 }
 
 async function startFlow(values) {
-  saving.value = true;
+  if (sending.value) {
+    return;
+  }
+
+  sending.value = true;
   try {
     campaign.value = await updateCampaign(route.params.id, values);
-    await startAndProcessCampaign(route.params.id, buildBulkEmailApiPayload(values));
-    feedback.success("Campaña iniciada", "La API confirmó el inicio y procesamiento del envío.");
-    router.push(`/correos-masivos/${route.params.id}`);
+    const result = await sendCampaignToAll(route.params.id, buildBulkEmailApiPayload(values), {
+      onProgress: (nextProgress) => {
+        sendingProgress.value = nextProgress;
+      },
+    });
+    campaign.value = await getCampaignById(route.params.id);
+    feedback.success(
+      "Envio finalizado",
+      `Enviados: ${result.sent}. Fallidos: ${result.failed}. Pendientes: ${result.summary?.pending ?? 0}.`,
+    );
+    router.replace("/correos-masivos");
   } catch (error) {
-    feedback.error("No fue posible iniciar la campaña", error);
+    feedback.error("No fue posible enviar a todos", error);
   } finally {
-    saving.value = false;
+    sending.value = false;
   }
+}
+
+async function ensureCampaign(values) {
+  campaign.value = await updateCampaign(route.params.id, values);
+  return campaign.value;
 }
 
 async function sendTestFlow({ campaign: campaignValues, email }) {
@@ -81,10 +104,9 @@ watch(
   <section class="page-shell page-wrap">
     <header class="page-head">
       <div>
-        <p class="eyebrow">Marketing communication</p>
-        <h1>Editar campaña</h1>
+        <p class="eyebrow">Correos masivos</p>
+        <h1>Enviar correo masivo</h1>
       </div>
-      <BaseButton variant="secondary" @click="router.push('/correos-masivos')">Volver</BaseButton>
     </header>
 
     <div v-if="loading" class="state-box">Cargando campaña...</div>
@@ -92,6 +114,9 @@ watch(
       v-else
       :campaign="campaign"
       :saving="saving"
+      :sending="sending"
+      :sending-progress="sendingProgress"
+      :ensure-campaign="ensureCampaign"
       @save-draft="saveDraft"
       @start-campaign="startFlow"
       @send-test="sendTestFlow"
@@ -135,3 +160,5 @@ watch(
   text-align: center;
 }
 </style>
+
+

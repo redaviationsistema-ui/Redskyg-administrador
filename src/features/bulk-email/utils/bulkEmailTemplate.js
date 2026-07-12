@@ -27,14 +27,14 @@ export const DEFAULT_BULK_EMAIL_CONTENT_TEXT =
 
 export function getDefaultBulkEmailDraft() {
   return {
-    subject: DEFAULT_BULK_EMAIL_SUBJECT,
+    subject: "",
     status: "draft",
     sender_name: DEFAULT_BULK_EMAIL_SENDER_NAME,
     sender_email: DEFAULT_BULK_EMAIL_SENDER_EMAIL,
     reply_to: DEFAULT_BULK_EMAIL_REPLY_TO,
-    main_title: DEFAULT_BULK_EMAIL_TITLE,
-    content_html: DEFAULT_BULK_EMAIL_CONTENT_HTML,
-    content_text: DEFAULT_BULK_EMAIL_CONTENT_TEXT,
+    main_title: "",
+    content_html: "",
+    content_text: "",
     button_text: DEFAULT_BULK_EMAIL_BUTTON_TEXT,
     button_url: DEFAULT_BULK_EMAIL_BUTTON_URL,
     image_url: "",

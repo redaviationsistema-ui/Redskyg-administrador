@@ -1,17 +1,24 @@
 <script setup>
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-import BaseButton from "@/components/ui/BaseButton.vue";
 import { useFeedback } from "@/composables/useFeedback";
 import BulkEmailCampaignForm from "../components/BulkEmailCampaignForm.vue";
 import { createCampaign, updateCampaign } from "../services/bulkEmail.service";
-import { sendTestCampaign, startAndProcessCampaign } from "../services/bulkEmailApi.service";
+import { sendCampaignToAll, sendTestCampaign } from "../services/bulkEmailApi.service";
 import { buildBulkEmailApiPayload } from "../utils/bulkEmailTemplate";
 
 const router = useRouter();
 const feedback = useFeedback();
 const campaign = ref(null);
 const saving = ref(false);
+const sending = ref(false);
+const formKey = ref(0);
+const sendingProgress = ref({
+  current: 0,
+  total: 0,
+  sent: 0,
+  failed: 0,
+});
 
 async function persistCampaign(values) {
   saving.value = true;
@@ -22,11 +29,14 @@ async function persistCampaign(values) {
       : await createCampaign(values);
 
     campaign.value = savedCampaign;
-    await router.replace(`/correos-masivos/${savedCampaign.id}/editar`);
     return savedCampaign;
   } finally {
     saving.value = false;
   }
+}
+
+async function ensureCampaign(values) {
+  return persistCampaign(values);
 }
 
 async function saveDraft(values) {
@@ -40,23 +50,43 @@ async function saveDraft(values) {
 }
 
 async function startFlow(values) {
-  let campaign = null;
+  if (sending.value) {
+    return;
+  }
+
+  let savedCampaign = null;
+  sending.value = true;
 
   try {
-    campaign = await persistCampaign(values);
-    await startAndProcessCampaign(campaign.id, buildBulkEmailApiPayload(values));
-    feedback.success("Campaña iniciada", "La API confirmó el inicio y procesamiento del envío.");
-    router.push(`/correos-masivos/${campaign.id}`);
+    savedCampaign = await persistCampaign(values);
+    const result = await sendCampaignToAll(savedCampaign.id, buildBulkEmailApiPayload(values), {
+      onProgress: (nextProgress) => {
+        sendingProgress.value = nextProgress;
+      },
+    });
+    feedback.success(
+      "Envio finalizado",
+      `Enviados: ${result.sent}. Fallidos: ${result.failed}. Pendientes: ${result.summary?.pending ?? 0}.`,
+    );
+    campaign.value = null;
+    sendingProgress.value = {
+      current: 0,
+      total: 0,
+      sent: 0,
+      failed: 0,
+    };
+    formKey.value += 1;
   } catch (error) {
-    if (campaign?.id) {
+    if (savedCampaign?.id) {
       feedback.warning(
-        "Campaña guardada pero no iniciada",
-        "Se creó el borrador, pero la API no confirmó el envío. Revisa la conexión con Inventory y vuelve a intentarlo.",
+        "Campana guardada pero no enviada",
+        error?.message || "Se creo el borrador, pero no fue posible completar el envio.",
       );
-      router.push(`/correos-masivos/${campaign.id}/editar`);
       return;
     }
-    feedback.error("No fue posible iniciar la campaña", error);
+    feedback.error("No fue posible enviar a todos", error);
+  } finally {
+    sending.value = false;
   }
 }
 
@@ -75,15 +105,18 @@ async function sendTestFlow({ campaign: campaignValues, email }) {
   <section class="page-shell page-wrap">
     <header class="page-head">
       <div>
-        <p class="eyebrow">Marketing communication</p>
-        <h1>Nueva campaña</h1>
+        <p class="eyebrow">Correos masivos</p>
+        <h1>Enviar correo masivo</h1>
       </div>
-      <BaseButton variant="secondary" @click="router.push('/correos-masivos')">Volver</BaseButton>
     </header>
 
     <BulkEmailCampaignForm
+      :key="formKey"
       :campaign="campaign"
       :saving="saving"
+      :sending="sending"
+      :sending-progress="sendingProgress"
+      :ensure-campaign="ensureCampaign"
       @save-draft="saveDraft"
       @start-campaign="startFlow"
       @send-test="sendTestFlow"
@@ -118,3 +151,5 @@ async function sendTestFlow({ campaign: campaignValues, email }) {
   margin: 0;
 }
 </style>
+
+

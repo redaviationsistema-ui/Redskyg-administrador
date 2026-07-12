@@ -1,5 +1,12 @@
 import { supabaseInventory } from "@/supabase";
 import { buildUrlEncodedBody, normalizeSendTestPayload } from "../utils/bulkEmailApiPayload";
+import {
+  getPendingCampaignRecipients,
+  markRecipientAsFailed,
+  markRecipientAsSent,
+  refreshCampaignDeliverySummary,
+  setCampaignProcessing,
+} from "./bulkEmail.service";
 
 const RAW_API_URL = import.meta.env.VITE_BULK_EMAIL_API_URL;
 const RAW_SEND_TEST_URL = import.meta.env.VITE_BULK_EMAIL_SEND_TEST_URL || "https://redskyg.com/administrador/bulk_email_send.php";
@@ -75,6 +82,26 @@ async function parseJsonResponseOrThrow(responseText) {
   } catch {
     throw new Error(`El servidor no respondió con JSON. Respuesta: ${responseText}`);
   }
+}
+
+function normalizeSendSinglePayload(campaignId, recipient = {}, payload = {}) {
+  return {
+    action: "send_single",
+    campaign_id: campaignId,
+    email: String(recipient.email || "").trim(),
+    name: String(recipient.normalized_name || recipient.name || "").trim(),
+    company: String(recipient.company || recipient.domain || "").trim(),
+    subject: String(payload.subject || "").trim(),
+    title: String(payload.title || payload.subject || "").trim(),
+    content: String(payload.content || "").trim(),
+    button_text: String(payload.button_text || "").trim(),
+    button_url: String(payload.button_url || "").trim(),
+    sender_name: String(payload.sender_name || "").trim(),
+    sender_email: String(payload.sender_email || "").trim(),
+    reply_to: String(payload.reply_to || "").trim(),
+    image_url: String(payload.image_url || "").trim(),
+    copy_internal: false,
+  };
 }
 
 function shouldRetryAsJson(response, responseText) {
@@ -214,6 +241,95 @@ export async function sendTestCampaign(campaignId, email, payload = {}) {
   }
 
   return result;
+}
+
+export async function sendSingleCampaignRecipient(campaignId, recipient, payload = {}) {
+  const apiUrl = resolveBulkEmailSendTestUrl();
+
+  if (!apiUrl) {
+    throw new Error("No existe un endpoint configurado para enviar correos.");
+  }
+
+  const requestPayload = normalizeSendSinglePayload(campaignId, recipient, payload);
+  let response;
+  let responseText = "";
+
+  try {
+    response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(requestPayload),
+    });
+  } catch (error) {
+    throw new Error(buildApiErrorMessage(error));
+  }
+
+  responseText = await response.text();
+  const result = await parseJsonResponseOrThrow(responseText);
+
+  if (!response.ok || result?.success !== true) {
+    throw new Error(result?.message || result?.error || `No se pudo enviar el correo. Estado HTTP ${response.status}`);
+  }
+
+  return result;
+}
+
+export async function sendCampaignToAll(campaignId, payload = {}, { onProgress } = {}) {
+  try {
+    await setCampaignProcessing(campaignId);
+  } catch {
+    // El ciclo de envío no debe depender de que el estado inicial se pueda escribir.
+  }
+
+  const recipients = await getPendingCampaignRecipients(campaignId);
+  const progress = {
+    current: 0,
+    total: recipients.length,
+    sent: 0,
+    failed: 0,
+  };
+
+  onProgress?.({ ...progress });
+
+  for (const recipient of recipients) {
+    progress.current += 1;
+    onProgress?.({ ...progress });
+
+    try {
+      const result = await sendSingleCampaignRecipient(campaignId, recipient, payload);
+      try {
+        await markRecipientAsSent(recipient.id, {
+          campaignId,
+          providerMessageId: result?.message_id || result?.messageId || result?.provider_message_id || null,
+        });
+        progress.sent += 1;
+      } catch {
+        progress.failed += 1;
+      }
+    } catch (error) {
+      try {
+        await markRecipientAsFailed(recipient.id, {
+          campaignId,
+          message: error?.message || "Error desconocido",
+        });
+      } catch {
+        // Si la bitácora falla, seguimos con el siguiente destinatario.
+      }
+      progress.failed += 1;
+    }
+
+    onProgress?.({ ...progress });
+  }
+
+  const summary = await refreshCampaignDeliverySummary(campaignId);
+  return {
+    success: true,
+    ...progress,
+    summary,
+  };
 }
 
 export function startCampaign(campaignId, payload = {}) {

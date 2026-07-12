@@ -155,7 +155,7 @@ const routes = [
       {
         path: "correos-masivos",
         name: "BulkEmailCampaigns",
-        component: () => import("@/features/bulk-email/views/BulkEmailCampaignsView.vue"),
+        component: () => import("@/features/bulk-email/views/BulkEmailCreateView.vue"),
         meta: { requiresAdmin: true, requiresInventoryAuth: true },
       },
       {

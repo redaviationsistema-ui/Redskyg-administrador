@@ -5,8 +5,8 @@ import {
   pauseCampaign,
   processCampaign,
   resumeCampaign,
+  sendCampaignToAll,
   sendTestCampaign,
-  startAndProcessCampaign,
 } from "../services/bulkEmailApi.service";
 import { buildBulkEmailApiPayload } from "../utils/bulkEmailTemplate";
 import {
@@ -203,9 +203,9 @@ export function useBulkEmailCampaigns() {
       campaign,
       type: "start",
       confirmConfig: {
-        title: "Iniciar campaña",
-        text: `Se intentará iniciar el envío de "${campaign.subject}".`,
-        confirmButtonText: "Iniciar envío",
+        title: "Enviar a todos",
+        text: `Se enviara un correo individual a los destinatarios pendientes de "${campaign.subject}".`,
+        confirmButtonText: "Enviar a todos",
         cancelButtonText: "Cancelar",
       },
       action: async () => {
@@ -215,7 +215,7 @@ export function useBulkEmailCampaigns() {
           throw new Error("La campaña no tiene destinatarios guardados. Importa y confirma al menos un destinatario antes de iniciar el envío.");
         }
 
-        return startAndProcessCampaign(campaign.id, buildBulkEmailApiPayload(freshCampaign));
+        return sendCampaignToAll(campaign.id, buildBulkEmailApiPayload(freshCampaign));
       },
     });
   }
@@ -304,3 +304,4 @@ export function useBulkEmailCampaigns() {
     confirmAndDelete,
   };
 }
+

@@ -67,7 +67,6 @@ const emit = defineEmits([
               <th>Fallidos</th>
               <th>Pendientes</th>
               <th>Fecha de creación</th>
-              <th>Fecha programada</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -84,24 +83,10 @@ const emit = defineEmits([
               <td>{{ row.failed_count || 0 }}</td>
               <td>{{ row.pending_count || 0 }}</td>
               <td>{{ row.created_at ? new Date(row.created_at).toLocaleString("es-MX") : "-" }}</td>
-              <td>-</td>
               <td>
                 <div class="actions-cell">
-                  <BaseButton variant="secondary" :disabled="busyId === row.id" @click="emit('view', row)">Ver</BaseButton>
-                  <BaseButton variant="secondary" :disabled="busyId === row.id" @click="emit('edit', row)">Editar</BaseButton>
-                  <BaseButton variant="secondary" :disabled="busyId === row.id" @click="emit('duplicate', row)">
-                    {{ busyId === row.id && busyType === "duplicate" ? "Duplicando..." : "Duplicar" }}
-                  </BaseButton>
-                  <BaseButton variant="secondary" :disabled="busyId === row.id" @click="emit('send-test', row)">Enviar prueba</BaseButton>
                   <BaseButton :disabled="busyId === row.id" @click="emit('start', row)">
-                    {{ busyId === row.id && busyType === "start" ? "Iniciando..." : "Iniciar envío" }}
-                  </BaseButton>
-                  <BaseButton variant="secondary" :disabled="busyId === row.id" @click="emit('pause', row)">Pausar</BaseButton>
-                  <BaseButton variant="secondary" :disabled="busyId === row.id" @click="emit('resume', row)">Reanudar</BaseButton>
-                  <BaseButton variant="secondary" :disabled="busyId === row.id" @click="emit('cancel', row)">Cancelar</BaseButton>
-                  <BaseButton variant="secondary" :disabled="busyId === row.id" @click="emit('progress', row)">Ver progreso</BaseButton>
-                  <BaseButton variant="danger" :disabled="deletingId === row.id" @click="emit('delete', row)">
-                    {{ deletingId === row.id ? "Eliminando..." : "Eliminar" }}
+                    {{ busyId === row.id && busyType === "start" ? "Enviando..." : "Enviar correo" }}
                   </BaseButton>
                 </div>
               </td>
@@ -178,3 +163,6 @@ const emit = defineEmits([
   }
 }
 </style>
+
+
+
