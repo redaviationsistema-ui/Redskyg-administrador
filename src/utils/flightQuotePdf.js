@@ -650,19 +650,20 @@ export async function generateFlightQuotePdf(quote) {
       const fromText = doc.splitTextToSize(fromLabel, 44);
       const toText = doc.splitTextToSize(route?.to_airport || "-", 44);
       const metrics = routeMetrics[getLegMetricKey(route, index)] || {};
-      const rowHeight = Math.max(10.5, Math.max(fromText.length, toText.length) * 4 + 4.5);
+      const rowLineHeight = 2.7;
+      const rowHeight = Math.max(7.4, Math.max(fromText.length, toText.length) * rowLineHeight + 3);
 
       if (index % 2 === 0) {
         doc.setFillColor(...COLORS.row);
         doc.rect(20, y, 170, rowHeight, "F");
       }
 
-      doc.setFontSize(7.3);
-      doc.text(String(index + 1), 25, y + 5.8);
-      doc.text(fromText, 38, y + 5.8);
-      doc.text(toText, 90, y + 5.8);
-      doc.text(metrics.distanceLabel || "-", 140, y + 5.8, { align: "right" });
-      doc.text(metrics.durationLabel || "-", 182, y + 5.8, { align: "right" });
+      doc.setFontSize(5.25);
+      doc.text(String(index + 1), 25, y + 4.6);
+      doc.text(fromText, 38, y + 4.6, { lineHeightFactor: 0.95 });
+      doc.text(toText, 90, y + 4.6, { lineHeightFactor: 0.95 });
+      doc.text(metrics.distanceLabel || "-", 140, y + 4.6, { align: "right" });
+      doc.text(metrics.durationLabel || "-", 182, y + 4.6, { align: "right" });
 
       doc.setDrawColor(...COLORS.line);
       doc.line(20, y + rowHeight, 190, y + rowHeight);
@@ -672,11 +673,11 @@ export async function generateFlightQuotePdf(quote) {
 
   const breakdownHeight = 13 + costRows.length * 5.8;
   const totalBlockHeight = showMxnInPdf && exchangeRate > 0 ? 28 : 20;
-  const requiredHeight = 9 + 9 + breakdownHeight + 9 + totalBlockHeight;
+  const breakdownBlockHeight = 9 + breakdownHeight;
 
   y += 7;
 
-  if (y + requiredHeight > FIRST_PAGE_CONTENT_MAX_Y) {
+  if (y + breakdownBlockHeight > FIRST_PAGE_CONTENT_MAX_Y) {
     prepareContinuationPage(doc);
     y = 28;
   }
