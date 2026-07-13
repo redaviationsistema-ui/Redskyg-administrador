@@ -48,6 +48,7 @@ const loadAircraft = async () => {
     id,
     name,
     aircraft_type,
+    iata,
     rental_price_usd,
     cruise_speed_knots,
     national_expenses_usd,
@@ -68,6 +69,7 @@ const loadAircraft = async () => {
     id: item.id,
     nombre: item.name,
     categoria: item.aircraft_type,
+    iata: item.iata,
     precio_renta_usd: item.rental_price_usd,
     velocidad_crucero_nudos: item.cruise_speed_knots,
     gastos_nacionales_usd: item.national_expenses_usd,
@@ -123,9 +125,10 @@ onMounted(loadAircraft);
   <tr>
     <th>Imagen</th>
     <th>Nombre</th>
+    <th>IATA</th>
     <th>Categoría</th>
-    <th>Rental Price USD</th>
-    <th>Cruise Speed Knots</th>
+    <th>Precio por hora (USD)</th>
+    <th>Velocidad crucero (knots)</th>
     <th>National Expenses USD</th>
     <th>Capacidad</th>
     <th>Disponible</th>
@@ -144,6 +147,7 @@ onMounted(loadAircraft);
 />
 </td>
     <td>{{ item.nombre }}</td>
+    <td>{{ item.iata || "-" }}</td>
     <td>{{ item.categoria }}</td>
     <td>{{ formatUsd(item.precio_renta_usd) }}</td>
     <td>{{ item.velocidad_crucero_nudos || "-" }}</td>
