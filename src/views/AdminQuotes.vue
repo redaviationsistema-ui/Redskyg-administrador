@@ -1,8 +1,11 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { supabase } from "@/supabase";
 import { generateFlightQuotePdf } from "@/utils/flightQuotePdf";
 
+const route = useRoute();
+const router = useRouter();
 const quotes = ref([]);
 const loading = ref(true);
 const selectedQuote = ref(null);
@@ -13,6 +16,8 @@ const generatingPdfId = ref(null);
 const editingPdf = ref(false);
 const savingPdfEdit = ref(false);
 const pdfEditor = ref(null);
+const airportOptions = ref([]);
+const airportsLoading = ref(false);
 
 function normalizePassengerCount(value) {
   const parsed = Number(value);
@@ -185,6 +190,53 @@ function updatePreviewNameFromEditor() {
   });
 }
 
+async function loadAirportOptions() {
+  if (airportOptions.value.length || airportsLoading.value) return;
+
+  airportsLoading.value = true;
+
+  try {
+    const [{ data: national }, { data: international }] = await Promise.all([
+      supabase.from("aeropuertos_mexico").select("*").range(0, 4999),
+      supabase.from("airports_geo").select("*").range(0, 4999),
+    ]);
+    const seen = new Set();
+
+    airportOptions.value = [...(national || []), ...(international || [])]
+      .map((airport) => ({
+        iata: normalizeAirportCode(airport?.IATA || airport?.iata),
+        name: airport?.AEROPUERTO || airport?.aeropuerto || "",
+        city: airport?.CIUDAD || airport?.ciudad || "",
+        country: airport?.COUNTRY || airport?.country || "MEXICO",
+      }))
+      .filter((airport) => {
+        if (!airport.iata || seen.has(airport.iata)) return false;
+        seen.add(airport.iata);
+        return true;
+      });
+  } finally {
+    airportsLoading.value = false;
+  }
+}
+
+function findAirportOption(code) {
+  const normalizedCode = normalizeAirportCode(code);
+  return airportOptions.value.find((airport) => airport.iata === normalizedCode) || null;
+}
+
+function handleLegAirportChange(index, field) {
+  if (!pdfEditor.value?.legs[index]) return;
+
+  const leg = pdfEditor.value.legs[index];
+  leg[field] = normalizeAirportCode(leg[field]);
+
+  if (field === "to_iata" && pdfEditor.value.legs[index + 1]) {
+    pdfEditor.value.legs[index + 1].from_iata = leg.to_iata;
+  }
+
+  syncEditorRouteFromLegs();
+}
+
 async function generateQuotePdf(quote) {
   generatingPdfId.value = quote.id;
 
@@ -216,9 +268,10 @@ function closePdfPreview() {
   pdfEditor.value = null;
 }
 
-function editPreviewQuote() {
+async function editPreviewQuote() {
   if (!pdfPreviewQuote.value?.id) return;
 
+  await loadAirportOptions();
   pdfEditor.value = buildPdfEditorState(pdfPreviewQuote.value);
   syncCurrencyTotals();
   recalculateTaxBreakdown();
@@ -467,12 +520,14 @@ function addEditorLeg() {
     amount_usd: 0,
     passengers: normalizePassengerCount(pdfEditor.value.passengers),
   });
+  syncEditorRouteFromLegs();
 }
 
 function removeEditorLeg(index) {
   if (!pdfEditor.value) return;
 
   pdfEditor.value.legs.splice(index, 1);
+  syncEditorRouteFromLegs();
 }
 
 function handleLegTimeInput(leg) {
@@ -502,11 +557,14 @@ function buildRouteSummaryFromLegs(legs) {
     path.push(to);
   });
 
-  if (path.length > 1 && path[path.length - 1] !== path[0]) {
-    path.push(path[0]);
-  }
-
   return path.join("-");
+}
+
+function syncEditorRouteFromLegs() {
+  if (!pdfEditor.value) return;
+
+  pdfEditor.value.route_summary = buildRouteSummaryFromLegs(pdfEditor.value.legs);
+  updatePreviewNameFromEditor();
 }
 
 async function savePdfEditor() {
@@ -607,7 +665,9 @@ async function savePdfEditor() {
         leg_type: leg.leg_type || "client",
         visible_to_client: leg.visible_to_client ?? leg.leg_type === "client",
         from_iata: String(leg.from_iata || "").trim().toUpperCase(),
+        from_airport_name: findAirportOption(leg.from_iata)?.name || leg.from_airport_name || null,
         to_iata: String(leg.to_iata || "").trim().toUpperCase(),
+        to_airport_name: findAirportOption(leg.to_iata)?.name || leg.to_airport_name || null,
         distance_nm: Number(leg.distance_nm || 0),
         billable_hours: Number(leg.billable_hours || 0),
         amount_usd: Number(leg.amount_usd || 0),
@@ -697,6 +757,18 @@ async function fetchQuotes() {
     quotes.value = [];
   } else {
     quotes.value = data || [];
+
+    const requestedPdfId = route.query.pdf;
+    const requestedQuote = requestedPdfId
+      ? quotes.value.find((quote) => String(quote.id) === String(requestedPdfId))
+      : null;
+
+    if (requestedQuote) {
+      await generateQuotePdf(requestedQuote);
+
+      const { pdf, ...remainingQuery } = route.query;
+      await router.replace({ query: remainingQuery });
+    }
   }
 
   loading.value = false;
@@ -872,8 +944,22 @@ onBeforeUnmount(() => {
                 <tbody>
                   <tr v-for="(leg, index) in pdfEditor.legs" :key="index">
                     <td>{{ index + 1 }}</td>
-                    <td><input v-model="leg.from_iata" /></td>
-                    <td><input v-model="leg.to_iata" /></td>
+                    <td>
+                      <input
+                        v-model="leg.from_iata"
+                        list="pdf-airport-options"
+                        placeholder="IATA"
+                        @change="handleLegAirportChange(index, 'from_iata')"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        v-model="leg.to_iata"
+                        list="pdf-airport-options"
+                        placeholder="IATA"
+                        @change="handleLegAirportChange(index, 'to_iata')"
+                      />
+                    </td>
                     <td><input v-model.number="leg.distance_nm" type="number" min="0" /></td>
                     <td>
                       <input
@@ -890,6 +976,15 @@ onBeforeUnmount(() => {
                   </tr>
                 </tbody>
               </table>
+              <datalist id="pdf-airport-options">
+                <option
+                  v-for="airport in airportOptions"
+                  :key="airport.iata"
+                  :value="airport.iata"
+                >
+                  {{ airport.iata }} - {{ airport.city || airport.name }} - {{ airport.country }}
+                </option>
+              </datalist>
             </div>
             <button class="small-add-btn" type="button" @click="addEditorLeg">
               Agregar tramo

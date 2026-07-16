@@ -77,7 +77,7 @@ function getAirportCode(airport) {
 function getAirportLocation(airport) {
   if (!airport) return "-";
 
-  const region = scope.value === "national" ? airport.estado : airport.country;
+  const region = airport.scope === "national" ? airport.estado : airport.country;
   return [airport.ciudad, region].filter(Boolean).join(", ");
 }
 
@@ -93,7 +93,7 @@ function normalizeAirportRecord(airport, currentScope) {
     estado: airport?.ESTADO || airport?.estado || airport?.STATE || airport?.state || "",
     country: airport?.COUNTRY || airport?.country || "",
     iata: normalize(airport?.IATA || airport?.iata),
-    icao: normalize(airport?.ICAO || airport?.icao),
+    icao: normalize(airport?.ICAO || airport?.["ICAO "] || airport?.icao),
     lat: toNumber(airport?.LATITUDE ?? airport?.latitude ?? airport?.lat),
     lng: toNumber(airport?.LONGITUDE ?? airport?.longitude ?? airport?.lng),
     scope: currentScope,
@@ -122,14 +122,7 @@ async function loadAircraft() {
 
   const { data, error } = await supabase
     .from("aircraft_fleet")
-    .select(`
-      id,
-      name,
-      aircraft_type,
-      cruise_speed_knots,
-      rental_price_usd,
-      national_expenses_usd
-    `)
+    .select("*")
     .eq("is_active", true)
     .order("name", { ascending: true });
 
@@ -161,58 +154,59 @@ async function searchAirports(kind) {
     toLoading.value = true;
   }
 
-  const table = scope.value === "national" ? "aeropuertos_mexico" : "airports_geo";
-  const request =
-    scope.value === "national"
-      ? supabase
-          .from(table)
-          .select(`
-            AEROPUERTO,
-            CIUDAD,
-            ESTADO,
-            IATA,
-            ICAO,
-            LATITUDE,
-            LONGITUDE
-          `)
-          .or(
-            `AEROPUERTO.ilike.%${query}%,CIUDAD.ilike.%${query}%,ESTADO.ilike.%${query}%,IATA.ilike.%${query}%,ICAO.ilike.%${query}%`,
-          )
-          .limit(8)
-      : supabase
-          .from(table)
-          .select("*")
-          .limit(50);
+  const searchTerm = query.trim().replaceAll(",", " ");
+  const nationalRequest = supabase
+    .from("aeropuertos_mexico")
+    .select(`
+      AEROPUERTO,
+      CIUDAD,
+      ESTADO,
+      IATA,
+      ICAO,
+      LATITUDE,
+      LONGITUDE
+    `)
+    .or(
+      `AEROPUERTO.ilike.%${searchTerm}%,CIUDAD.ilike.%${searchTerm}%,ESTADO.ilike.%${searchTerm}%,IATA.ilike.%${searchTerm}%,ICAO.ilike.%${searchTerm}%`,
+    )
+    .limit(10);
 
-  const { data, error } = await request;
+  const requests = [nationalRequest];
 
-  if (error) {
-    console.error(`Unable to load ${kind} airports`, error);
-    if (kind === "from") {
-      fromResults.value = [];
-    } else {
-      toResults.value = [];
-    }
+  if (scope.value === "international") {
+    requests.push(
+      supabase
+        .from("airports_geo")
+        .select("*")
+        .or(
+          `AEROPUERTO.ilike.%${searchTerm}%,CIUDAD.ilike.%${searchTerm}%,COUNTRY.ilike.%${searchTerm}%,IATA.ilike.%${searchTerm}%`,
+        )
+        .limit(20),
+    );
   }
 
-  const normalizedResults = scope.value === "international"
-    ? (data || [])
-        .map((airport) => normalizeAirportRecord(airport, scope.value))
-        .filter((airport) => {
-          const haystack = [
-            airport.aeropuerto,
-            airport.ciudad,
-            airport.country,
-            airport.iata,
-            airport.icao,
-          ]
-            .join(" ")
-            .toUpperCase();
+  const responses = await Promise.all(requests);
+  const failedResponse = responses.find(({ error }) => error);
 
-          return haystack.includes(normalize(query));
-        })
-        .slice(0, 8)
-    : (data || []).map((airport) => normalizeAirportRecord(airport, scope.value));
+  if (failedResponse?.error) {
+    console.error(`Unable to load ${kind} airports`, failedResponse.error);
+  }
+
+  const nationalResults = (responses[0]?.data || []).map((airport) =>
+    normalizeAirportRecord(airport, "national"),
+  );
+  const internationalResults = (responses[1]?.data || []).map((airport) =>
+    normalizeAirportRecord(airport, "international"),
+  );
+  const seenAirports = new Set();
+  const normalizedResults = [...nationalResults, ...internationalResults]
+    .filter((airport) => {
+      const key = airport.iata || airport.icao || `${airport.aeropuerto}-${airport.ciudad}`;
+      if (!key || seenAirports.has(key)) return false;
+      seenAirports.add(key);
+      return true;
+    })
+    .slice(0, 12);
 
   if (kind === "from") {
     fromResults.value = normalizedResults;
@@ -370,7 +364,7 @@ onMounted(() => {
               Nacional
             </button>
             <button :class="{ active: scope === 'international' }" @click="scope = 'international'">
-              Internacional
+              Nacional e Internacional
             </button>
           </div>
         </div>

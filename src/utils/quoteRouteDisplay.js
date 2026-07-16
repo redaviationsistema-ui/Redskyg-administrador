@@ -18,7 +18,9 @@ function getSavedFlightQuoteLegs(quote) {
       return {
         id: leg?.id || `saved-leg-${index}`,
         from_airport: normalizeAirportCode(leg?.from_iata || leg?.from_icao),
+        from_airport_name: String(leg?.from_airport_name || "").trim(),
         to_airport: normalizeAirportCode(leg?.to_iata || leg?.to_icao),
+        to_airport_name: String(leg?.to_airport_name || "").trim(),
         aircraft_id: quote?.aircraft_id || null,
         aircraft_fleet: {
           name: quote?.aircraft_name || EMPTY_VALUE,

@@ -13,9 +13,10 @@ const loading = ref(false);
 const saving = ref(false);
 const editingQuoteId = ref(route.query.edit === "true" ? route.query.quote_id || null : null);
 const editingQuoteNumber = ref("");
+const DEFAULT_CLIENT_NAME = "A QUIEN CORRESPONDA";
 
 const form = ref({
-  full_name: "",
+  full_name: DEFAULT_CLIENT_NAME,
   flight_type: "Private Jet",
   quote_mode: "complete",
   time_mode: "block",
@@ -718,6 +719,27 @@ const routePreview = computed(() => {
   return path.join("-");
 });
 
+const routeAirportsPreview = computed(() => {
+  const airportCodes = [];
+
+  validRoutes.value.forEach((leg, index) => {
+    const fromCode = normalize(leg.from_airport);
+    const toCode = normalize(leg.to_airport);
+
+    if (index === 0 || airportCodes[airportCodes.length - 1] !== fromCode) {
+      airportCodes.push(fromCode);
+    }
+
+    airportCodes.push(toCode);
+  });
+
+  return airportCodes.map((code) => {
+    const airport = findAirport(code);
+    const airportName = airport?.aeropuerto || airport?.ciudad;
+    return airportName ? `${airportName} - ${code}` : code;
+  }).join(" / ");
+});
+
 function getAircraftTail(aircraft) {
   return (
     aircraft?.tail_number ||
@@ -919,7 +941,7 @@ function resetForm() {
   editingQuoteId.value = null;
   editingQuoteNumber.value = "";
   form.value = {
-    full_name: "",
+    full_name: DEFAULT_CLIENT_NAME,
     flight_type: "Private Jet",
     quote_mode: "complete",
     time_mode: "block",
@@ -990,7 +1012,7 @@ async function loadQuoteForEdit() {
     if (error) throw error;
 
     form.value = {
-      full_name: data.client_name || "",
+      full_name: data.client_name || DEFAULT_CLIENT_NAME,
       flight_type: data.flight_type || "Private Jet",
       quote_mode: data.quote_mode || "complete",
       time_mode: data.time_mode || "block",
@@ -1107,6 +1129,10 @@ async function handleSaveQuote() {
       `${isEditMode.value ? "Cotizacion actualizada" : "Cotizacion guardada"} ${quote.quote_number || ""}`.trim(),
       "success",
     );
+    await router.push({
+      name: "AdminQuotes",
+      query: { pdf: quote.id },
+    });
   } catch (error) {
     console.error("Unable to save flight quote", error);
     feedback.error("No se pudo guardar la cotizacion", error);
@@ -1115,7 +1141,7 @@ async function handleSaveQuote() {
   }
 }
 
-function downloadQuotePreviewPdf() {
+function downloadQuotePreviewPdf({ openInBrowser = false } = {}) {
   if (!quotePreview.value) {
     feedback.warning("Primero calcula la cotizacion", "Genera el preview antes de descargar el PDF.");
     return;
@@ -1142,6 +1168,13 @@ function downloadQuotePreviewPdf() {
   doc.text(`Ruta: ${routePreview.value}`, 14, infoY);
   infoY += 6;
 
+  const airportLines = doc.splitTextToSize(
+    `Aeropuertos: ${routeAirportsPreview.value || "-"}`,
+    180,
+  );
+  doc.text(airportLines, 14, infoY);
+  infoY += airportLines.length * 5 + 1;
+
   if (passengerCount) {
     doc.text(`Pasajeros: ${passengerCount}`, 14, infoY);
     infoY += 6;
@@ -1155,37 +1188,40 @@ function downloadQuotePreviewPdf() {
   infoY += 6;
   doc.text(`Tiempo: ${meta.calculationModeLabel}`, 14, infoY);
 
+  const totalsY = Math.max(92, infoY + 10);
   doc.setFont("helvetica", "bold");
-  doc.text("Totales", 14, 86);
+  doc.text("Totales", 14, totalsY);
   doc.setFont("helvetica", "normal");
-  doc.text(`Horas cliente: ${totals.clientFlightHours.toFixed(2)} h`, 14, 94);
-  doc.text(`Horas cobrables: ${totals.billableHours.toFixed(2)} h`, 14, 100);
-  doc.text(`Tarifa por hora: $${totals.hourlyRate.toFixed(2)} USD`, 14, 106);
-  doc.text(`Costo vuelo: $${totals.flightCost.toFixed(2)} USD`, 14, 112);
-  doc.text(`Reposicionamiento: $${totals.repositioningCost.toFixed(2)} USD`, 14, 118);
-  doc.text(`Regreso a base: $${totals.returnToBaseCost.toFixed(2)} USD`, 14, 124);
-  doc.text(`Pernocta: $${totals.overnightCost.toFixed(2)} USD`, 14, 130);
-  doc.text(`Gastos operativos: $${totals.operationalExpenses.toFixed(2)} USD (${meta.expensesLabel})`, 14, 136);
-  doc.text(`Subtotal: $${totals.subtotal.toFixed(2)} USD`, 14, 142);
-  doc.text(`IVA / Tax: $${totals.taxAmount.toFixed(2)} USD (${meta.taxLabel})`, 14, 148);
-  doc.text(`Total USD: $${totals.totalUsd.toFixed(2)} USD`, 14, 154);
-  doc.text(`Tipo de cambio: ${totals.exchangeRate.toFixed(2)}`, 14, 160);
-  doc.text(`Total MXN: $${totals.totalMxn.toFixed(2)} MXN`, 14, 166);
+  doc.text(`Horas cliente: ${totals.clientFlightHours.toFixed(2)} h`, 14, totalsY + 8);
+  doc.text(`Horas cobrables: ${totals.billableHours.toFixed(2)} h`, 14, totalsY + 14);
+  doc.text(`Tarifa por hora: $${totals.hourlyRate.toFixed(2)} USD`, 14, totalsY + 20);
+  doc.text(`Costo vuelo: $${totals.flightCost.toFixed(2)} USD`, 14, totalsY + 26);
+  doc.text(`Reposicionamiento: $${totals.repositioningCost.toFixed(2)} USD`, 14, totalsY + 32);
+  doc.text(`Regreso a base: $${totals.returnToBaseCost.toFixed(2)} USD`, 14, totalsY + 38);
+  doc.text(`Pernocta: $${totals.overnightCost.toFixed(2)} USD`, 14, totalsY + 44);
+  doc.text(`Gastos operativos: $${totals.operationalExpenses.toFixed(2)} USD (${meta.expensesLabel})`, 14, totalsY + 50);
+  doc.text(`Subtotal: $${totals.subtotal.toFixed(2)} USD`, 14, totalsY + 56);
+  doc.text(`IVA / Tax: $${totals.taxAmount.toFixed(2)} USD (${meta.taxLabel})`, 14, totalsY + 62);
+  doc.text(`Total USD: $${totals.totalUsd.toFixed(2)} USD`, 14, totalsY + 68);
+  doc.text(`Tipo de cambio: ${totals.exchangeRate.toFixed(2)}`, 14, totalsY + 74);
+  doc.text(`Total MXN: $${totals.totalMxn.toFixed(2)} MXN`, 14, totalsY + 80);
 
+  const debugY = totalsY + 94;
   doc.setFont("helvetica", "bold");
-  doc.text("Debug admin", 14, 180);
+  doc.text("Debug admin", 14, debugY);
   doc.setFont("helvetica", "normal");
-  doc.text(`Aeronave: ${meta.aircraftName}`, 14, 188);
-  doc.text(`Base: ${meta.baseAirport}`, 14, 194);
-  doc.text(`Tarifa usada: $${totals.hourlyRate.toFixed(2)} USD/h`, 14, 200);
-  doc.text(`Operacion: ${meta.isInternational ? "Internacional" : "Nacional"}`, 14, 206);
-  doc.text(`Tax aplicado: ${totals.taxApplied ? "Si" : "No"}`, 14, 212);
+  doc.text(`Aeronave: ${meta.aircraftName}`, 14, debugY + 8);
+  doc.text(`Base: ${meta.baseAirport}`, 14, debugY + 14);
+  doc.text(`Tarifa usada: $${totals.hourlyRate.toFixed(2)} USD/h`, 14, debugY + 20);
+  doc.text(`Operacion: ${meta.isInternational ? "Internacional" : "Nacional"}`, 14, debugY + 26);
+  doc.text(`Tax aplicado: ${totals.taxApplied ? "Si" : "No"}`, 14, debugY + 32);
 
+  const billableLegsY = debugY + 44;
   doc.setFont("helvetica", "bold");
-  doc.text("Tramos cobrables", 14, 224);
+  doc.text("Tramos cobrables", 14, billableLegsY);
   doc.setFont("helvetica", "normal");
 
-  let y = 232;
+  let y = billableLegsY + 8;
   quotePreview.value.billableLegs.forEach((leg, index) => {
     if (y > 280) {
       doc.addPage();
@@ -1206,7 +1242,15 @@ function downloadQuotePreviewPdf() {
     y += 7;
   });
 
-  doc.save(`flight-quote-preview-${Date.now()}.pdf`);
+  const pdfFileName = `${savedQuote.value?.quote_number || `flight-quote-${Date.now()}`}.pdf`;
+
+  if (openInBrowser) {
+    const pdfUrl = URL.createObjectURL(doc.output("blob"));
+    window.location.assign(pdfUrl);
+    return;
+  }
+
+  doc.save(pdfFileName);
 }
 
 onMounted(async () => {

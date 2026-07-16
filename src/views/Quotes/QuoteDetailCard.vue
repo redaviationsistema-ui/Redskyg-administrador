@@ -178,6 +178,44 @@ const reservationButtonLabel = computed(() =>
   existingReservation.value?.id ? "Actualizar reserva" : "Marcar como reservado",
 );
 
+function getAirportDisplay(code, name) {
+  const airportCode = String(code || "").trim().toUpperCase() || EMPTY_VALUE;
+  const airportName = String(name || "").trim();
+  const suffixMatch = airportName.match(/\s+(international\s+airport)$/i);
+  const rawShortName = suffixMatch
+    ? airportName.slice(0, suffixMatch.index).trim()
+    : airportName;
+  const shortName = (/^[A-ZÁÉÍÓÚÜÑ\s.'-]+$/.test(rawShortName)
+    ? rawShortName.toLocaleLowerCase("es-MX").replace(/(^|[\s.'-])([a-záéíóúüñ])/g, (_, prefix, letter) => `${prefix}${letter.toLocaleUpperCase("es-MX")}`)
+    : rawShortName
+  ).replace(/^Licenciado\b/i, "Lic.");
+
+  return {
+    name: airportName ? `${shortName || airportCode} - ${airportCode}` : airportCode,
+    detail: "",
+  };
+}
+
+function formatDistanceLabel(value) {
+  const label = String(value || "").trim();
+  return label && label !== EMPTY_VALUE ? `${label.replace(/\s*NM$/i, "")} NM` : EMPTY_VALUE;
+}
+
+function formatTimeLabel(metrics) {
+  const hours = Number(metrics?.durationHours);
+
+  if (Number.isFinite(hours) && hours >= 0) {
+    const minutes = Math.round(hours * 60);
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  }
+
+  const label = String(metrics?.durationLabel || "").trim();
+  const hourMatch = label.match(/(?:(\d+)h)?\s*(?:(\d+)m)?/i);
+  if (!hourMatch || (!hourMatch[1] && !hourMatch[2])) return EMPTY_VALUE;
+
+  return `${String(Number(hourMatch[1] || 0)).padStart(2, "0")}:${String(Number(hourMatch[2] || 0)).padStart(2, "0")}`;
+}
+
 const reservationSummary = computed(() => {
   if (!existingReservation.value?.id) {
     return "Completa la reserva operativa y guarda.";
@@ -611,15 +649,19 @@ watch(
               :class="{ 'table-row-positioning': route.positioning }"
             >
               <span>{{ index + 1 }}</span>
-              <span>
-                {{ route.from_airport || EMPTY_VALUE }}
+              <span class="airport-cell">
+                <strong>{{ getAirportDisplay(route.from_airport, route.from_airport_name).name }}</strong>
+                <small>{{ getAirportDisplay(route.from_airport, route.from_airport_name).detail }}</small>
                 <small v-if="route.positioning" class="positioning-chip">
                   {{ route.positioningLabel }}
                 </small>
               </span>
-              <span>{{ route.to_airport || EMPTY_VALUE }}</span>
-              <span>{{ getRouteMetrics(route, index)?.distanceLabel || EMPTY_VALUE }}</span>
-              <span>{{ getRouteMetrics(route, index)?.durationLabel || EMPTY_VALUE }}</span>
+              <span class="airport-cell">
+                <strong>{{ getAirportDisplay(route.to_airport, route.to_airport_name).name }}</strong>
+                <small>{{ getAirportDisplay(route.to_airport, route.to_airport_name).detail }}</small>
+              </span>
+              <span class="metric-cell">{{ formatDistanceLabel(getRouteMetrics(route, index)?.distanceLabel) }}</span>
+              <span class="metric-cell">{{ formatTimeLabel(getRouteMetrics(route, index)) }}</span>
             </div>
 
             <div v-if="!routes.length" class="table-empty">
@@ -923,16 +965,17 @@ watch(
 
 .table-shell {
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 .table-head,
 .table-row {
   display: grid;
-  grid-template-columns: 52px 1.4fr 1.4fr 0.95fr 0.9fr;
-  gap: 0.7rem;
+  grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr) 88px 72px;
+  gap: 0.35rem;
   align-items: center;
-  padding: 0.65rem 0.8rem;
+  min-width: 650px;
+  padding: 0.55rem 0.6rem;
   font-size: 0.84rem;
 }
 
@@ -946,6 +989,32 @@ watch(
 
 .table-row {
   border-bottom: 1px solid var(--line);
+}
+
+.airport-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.15;
+}
+
+.airport-cell strong {
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.airport-cell > small:not(.positioning-chip) {
+  margin-top: 0.18rem;
+  color: #6b7280;
+  font-size: 0.8rem;
+}
+
+.metric-cell,
+.table-head span:nth-child(4),
+.table-head span:nth-child(5) {
+  text-align: center;
 }
 
 .table-row:nth-child(even) {
@@ -1093,11 +1162,6 @@ watch(
   .soft-card + .soft-card,
   .total-box {
     margin-top: 1rem;
-  }
-
-  .table-head,
-  .table-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .footer {
