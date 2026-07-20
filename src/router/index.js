@@ -153,6 +153,12 @@ const routes = [
         meta: { requiresAdmin: true },
       },
       {
+        path: "comercial",
+        name: "CommercialDashboard",
+        component: () => import("@/features/admin/commercial/CommercialDashboard.vue"),
+        meta: { requiresAdmin: true },
+      },
+      {
         path: "correos-masivos",
         name: "BulkEmailCampaigns",
         component: () => import("@/features/bulk-email/views/BulkEmailCreateView.vue"),

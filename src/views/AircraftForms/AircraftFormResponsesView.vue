@@ -98,9 +98,9 @@ onMounted(fetchResponses);
     <header class="page-header">
       <div>
         <span class="eyebrow">Forms de aviones</span>
-        <h1>Respuestas de formularios</h1>
+        <h1>Respuestas de vuelos </h1>
         <p class="subtitle">
-          Prospectos recibidos desde formularios de aeronaves como Pilatus PC-12 2008.
+          Prospectos recibidos desde vuelos  de aeronaves como Pilatus PC-12 2008.
         </p>
       </div>
 

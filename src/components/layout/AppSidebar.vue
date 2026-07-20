@@ -18,6 +18,7 @@ const openAircraftForms = ref(true);
 
 const mainLinks = [
   { to: "/", label: "Dashboard", hint: "Overview" },
+  { to: "/comercial", label: "Centro Comercial", hint: "Pipeline y ventas" },
   { to: "/aircraft", label: "Aircraft", hint: "Fleet" },
   { to: "/lookbooks", label: "Lookbooks", hint: "Library" },
   { to: "/correos-masivos", label: "Correos masivos", hint: "Campaigns" },
