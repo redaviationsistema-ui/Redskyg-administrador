@@ -4,7 +4,6 @@ import {
   COMMERCIAL_CURRENCY_OPTIONS,
   COMMERCIAL_REQUEST_TYPE_OPTIONS,
   COMMERCIAL_STATUS_OPTIONS,
-  createAttachmentFromFile,
   createEmptyCommercialRecord,
   exportCommercialCsv,
   exportCommercialExcel,
@@ -60,15 +59,16 @@ export function useCommercial() {
   const stats = computed(() => {
     const dataset = rows.value;
     const countByStatus = (status) => dataset.filter((row) => row.status === status).length;
+    const countStatuses = (statuses) => dataset.filter((row) => statuses.includes(row.status)).length;
 
     return {
       total: dataset.length,
-      open: countByStatus("abierta"),
-      providerPending: countByStatus("pendiente proveedor"),
+      open: countStatuses(["pendiente", "contactado", "cotizando", "cotizado", "enviada cliente"]),
+      providerPending: countByStatus("solicitada proveedor"),
       negotiation: countByStatus("en negociacion"),
-      accepted: countByStatus("aceptada"),
-      lost: countByStatus("perdida"),
-      sold: countByStatus("vuelo vendido"),
+      accepted: countStatuses(["aceptada", "ganada"]),
+      lost: countStatuses(["no aceptada", "perdida", "cancelada"]),
+      sold: countStatuses(["facturada", "pagada"]),
       potentialRevenue: dataset.reduce((sum, row) => sum + Number(row.potentialRevenue || row.salePrice || 0), 0),
       confirmedRevenue: dataset.reduce((sum, row) => sum + Number(row.confirmedRevenue || 0), 0),
       expectedProfit: dataset.reduce((sum, row) => sum + Number(row.expectedProfit || row.profit || 0), 0),
@@ -77,7 +77,7 @@ export function useCommercial() {
 
   const summary = computed(() => ({
     activePipelineValue: rows.value
-      .filter((row) => row.status !== "perdida")
+      .filter((row) => !["no aceptada", "perdida", "cancelada"].includes(row.status))
       .reduce((sum, row) => sum + Number(row.salePrice || row.potentialRevenue || 0), 0),
     followUpToday: rows.value.filter((row) => row.nextFollowUp === new Date().toISOString().slice(0, 10)).length,
     averageMargin: rows.value.length
@@ -92,6 +92,7 @@ export function useCommercial() {
   }));
 
   async function refresh() {
+    if (loading.value) return;
     loading.value = true;
     error.value = "";
 
@@ -105,7 +106,8 @@ export function useCommercial() {
         previewRecord.value = response.rows.find((row) => row.id === previewRecord.value?.id) || previewRecord.value;
       }
     } catch (loadError) {
-      error.value = loadError?.message || "No fue posible cargar el centro comercial.";
+      console.error("[Commercial] Error loading opportunities", loadError);
+      error.value = "No se pudo cargar el seguimiento comercial. Verifica la conexión e intenta nuevamente.";
     } finally {
       loading.value = false;
     }
@@ -192,10 +194,16 @@ export function useCommercial() {
       previewRecord.value = response.row;
       drawerMode.value = "view";
       feedback.notify(mode === "create" ? "Registro creado" : "Registro actualizado");
+      closeDrawer();
       return response.row;
     } catch (saveError) {
-      feedback.error("No fue posible guardar el registro", saveError);
-      throw saveError;
+      console.error("[Commercial] Error saving opportunity", saveError);
+      await feedback.error(
+        "No fue posible guardar el registro",
+        null,
+        "Verifica los datos e intenta nuevamente.",
+      );
+      return null;
     } finally {
       saving.value = false;
     }
@@ -204,8 +212,8 @@ export function useCommercial() {
   async function removeRow(row) {
     const result = await feedback.confirm({
       title: "Eliminar oportunidad",
-      text: `Se eliminará ${row.folio}. Esta acción no se puede deshacer.`,
-      confirmButtonText: "Eliminar",
+      text: `¿Deseas archivar la oportunidad ${row.folio || row.customerName}?`,
+      confirmButtonText: "Archivar",
       cancelButtonText: "Cancelar",
       icon: "warning",
       confirmButtonColor: "#b91c1c",
@@ -225,7 +233,7 @@ export function useCommercial() {
       if (previewRecord.value?.id === row.id) {
         previewRecord.value = rows.value[0] || null;
       }
-      feedback.notify("Registro eliminado");
+      feedback.notify("Oportunidad archivada");
     } catch (deleteError) {
       feedback.error("No fue posible eliminar el registro", deleteError);
     }
@@ -272,21 +280,20 @@ export function useCommercial() {
       return;
     }
 
-    await persistRecord(
-      {
+    try {
+      const timestamp = new Date().toLocaleString("es-MX");
+      const current = String(selectedRecord.value.observaciones || "").trim();
+      const entry = `[${timestamp}] Seguimiento: ${detail.trim()}`;
+      const saved = await persistRecord({
         ...selectedRecord.value,
-        timeline: [
-          {
-            id: `tl-${Date.now()}`,
-            title: "Seguimiento registrado",
-            detail: detail.trim(),
-            createdAt: new Date().toISOString(),
-          },
-          ...(selectedRecord.value.timeline || []),
-        ],
-      },
-      "edit",
-    );
+        observaciones: current ? `${current}\n${entry}` : entry,
+      }, "edit");
+      if (!saved) return;
+      feedback.notify("Seguimiento registrado");
+    } catch (followUpError) {
+      console.error("[Commercial] Error creating follow-up", followUpError);
+      await feedback.error("No fue posible registrar el seguimiento");
+    }
   }
 
   async function addNote(noteText) {
@@ -294,21 +301,20 @@ export function useCommercial() {
       return;
     }
 
-    await persistRecord(
-      {
+    try {
+      const timestamp = new Date().toLocaleString("es-MX");
+      const current = String(selectedRecord.value.observaciones || "").trim();
+      const entry = `[${timestamp}] Nota: ${noteText.trim()}`;
+      const saved = await persistRecord({
         ...selectedRecord.value,
-        notes: [
-          {
-            id: `note-${Date.now()}`,
-            text: noteText.trim(),
-            createdAt: new Date().toISOString(),
-            author: "Equipo comercial",
-          },
-          ...(selectedRecord.value.notes || []),
-        ],
-      },
-      "edit",
-    );
+        observaciones: current ? `${current}\n${entry}` : entry,
+      }, "edit");
+      if (!saved) return;
+      feedback.notify("Nota agregada");
+    } catch (noteError) {
+      console.error("[Commercial] Error creating note", noteError);
+      await feedback.error("No fue posible agregar la nota");
+    }
   }
 
   async function addAttachment(file) {
@@ -316,25 +322,13 @@ export function useCommercial() {
       return;
     }
 
-    await persistRecord(
-      {
-        ...selectedRecord.value,
-        attachments: [createAttachmentFromFile(file), ...(selectedRecord.value.attachments || [])],
-      },
-      "edit",
-    );
+    feedback.warning("Archivos no disponibles", "La tabla principal no contiene almacenamiento de archivos.");
   }
 
   async function removeAttachment(attachmentId) {
     if (!selectedRecord.value) return;
 
-    await persistRecord(
-      {
-        ...selectedRecord.value,
-        attachments: (selectedRecord.value.attachments || []).filter((item) => item.id !== attachmentId),
-      },
-      "edit",
-    );
+    void attachmentId;
   }
 
   async function exportCsv() {

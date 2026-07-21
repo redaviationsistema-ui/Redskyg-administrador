@@ -36,20 +36,20 @@ const emit = defineEmits(["close"]);
   inset: 0;
   z-index: 50;
   display: flex;
-  justify-content: flex-end;
-  background: rgba(8, 17, 31, 0.42);
-  backdrop-filter: blur(4px);
+  background: var(--bg-soft);
 }
 
 .drawer {
-  width: min(860px, 100%);
+  width: 100vw;
+  max-width: none;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   background:
     radial-gradient(circle at top right, rgba(15, 95, 166, 0.12), transparent 24%),
     linear-gradient(180deg, var(--bg-surface-solid), var(--bg-soft));
-  box-shadow: -24px 0 60px rgba(8, 17, 31, 0.18);
+  box-shadow: none;
 }
 
 .drawer-header {

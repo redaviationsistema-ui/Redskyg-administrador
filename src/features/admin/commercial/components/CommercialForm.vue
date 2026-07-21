@@ -84,6 +84,21 @@ function handleSubmit() {
         <input v-model="form.phone" :disabled="isReadOnly" type="text" />
       </label>
 
+      <label class="field">
+        <span>Contacto</span>
+        <input v-model="form.contacto" :disabled="isReadOnly" type="text" />
+      </label>
+
+      <label class="field">
+        <span>WhatsApp</span>
+        <input v-model="form.whatsapp" :disabled="isReadOnly" type="text" />
+      </label>
+
+      <label class="field field-span-2">
+        <span>Solicitud</span>
+        <input v-model="form.solicitud" :disabled="isReadOnly" type="text" required />
+      </label>
+
       <label class="field field-span-2">
         <span>Ruta</span>
         <input v-model="form.route" :disabled="isReadOnly" type="text" placeholder="Toluca - Miami" />
@@ -102,11 +117,6 @@ function handleSubmit() {
       <label class="field">
         <span>Pasajeros</span>
         <input v-model="form.passengers" :disabled="isReadOnly" type="number" min="1" />
-      </label>
-
-      <label class="field">
-        <span>Aeronave</span>
-        <input v-model="form.aircraft" :disabled="isReadOnly" type="text" />
       </label>
 
       <label class="field">
@@ -130,7 +140,7 @@ function handleSubmit() {
 
       <label class="field">
         <span>FBO</span>
-        <input v-model="form.fbo" :disabled="isReadOnly" type="text" />
+        <input v-model="form.fbo" :disabled="isReadOnly" type="number" min="0" step="0.01" />
       </label>
 
       <label class="field">
@@ -179,6 +189,11 @@ function handleSubmit() {
       <label class="field">
         <span>Utilidad esperada</span>
         <input v-model="form.expectedProfit" :disabled="isReadOnly" type="number" min="0" step="0.01" />
+      </label>
+
+      <label class="field field-span-2">
+        <span>Observaciones</span>
+        <textarea v-model="form.observaciones" :disabled="isReadOnly" rows="4"></textarea>
       </label>
     </div>
 

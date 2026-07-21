@@ -30,6 +30,7 @@ const emit = defineEmits([
   "note",
   "attachment",
   "delete",
+  "retry",
 ]);
 
 function formatCurrency(value, currency) {
@@ -103,7 +104,10 @@ function isUpcoming(date) {
       <strong>{{ rows.length }} oportunidades</strong>
     </div>
 
-    <p v-if="error" class="error">{{ error }}</p>
+    <div v-if="error" class="error-state">
+      <p class="error">{{ error }}</p>
+      <button type="button" class="retry-button" @click="emit('retry')">Reintentar</button>
+    </div>
     <p v-else-if="loading" class="placeholder">Cargando oportunidades...</p>
     <p v-else-if="!rows.length" class="placeholder">No hay oportunidades que coincidan con tus filtros.</p>
 

@@ -2,15 +2,22 @@ import * as XLSX from "xlsx";
 import { supabase } from "@/supabase";
 
 const TABLE_NAME = "commercial_opportunities";
-const STORAGE_KEY = "redskyg_commercial_module_records";
 
 export const COMMERCIAL_STATUS_OPTIONS = [
-  "abierta",
-  "pendiente proveedor",
+  "pendiente",
+  "contactado",
+  "cotizando",
+  "cotizado",
+  "solicitada proveedor",
+  "enviada cliente",
   "en negociacion",
   "aceptada",
+  "ganada",
+  "facturada",
+  "pagada",
+  "no aceptada",
   "perdida",
-  "vuelo vendido",
+  "cancelada",
 ];
 
 export const COMMERCIAL_CURRENCY_OPTIONS = ["USD", "MXN", "EUR"];
@@ -194,7 +201,8 @@ function formatSizeLabel(size) {
 function serializeRecord(record) {
   const providerPrice = toNumber(record.providerPrice);
   const salePrice = toNumber(record.salePrice);
-  const profit = salePrice - providerPrice;
+  const fbo = toNumber(record.fbo);
+  const profit = salePrice - providerPrice - fbo;
   const margin = salePrice > 0 ? Number(((profit / salePrice) * 100).toFixed(2)) : 0;
   const normalizedStatus = String(record.status || "abierta").toLowerCase().trim();
 
@@ -213,9 +221,9 @@ function serializeRecord(record) {
     passengers: toNumber(record.passengers),
     aircraft: String(record.aircraft || "").trim(),
     provider: String(record.provider || "").trim(),
-    status: normalizedStatus,
+    status: normalizedStatus === "abierta" ? "pendiente" : normalizedStatus,
     providerPrice,
-    fbo: String(record.fbo || "").trim(),
+    fbo,
     salePrice,
     profit,
     margin,
@@ -229,6 +237,11 @@ function serializeRecord(record) {
         ? toNumber(record.confirmedRevenue || salePrice)
         : toNumber(record.confirmedRevenue),
     expectedProfit: toNumber(record.expectedProfit || profit),
+    flightQuoteId: record.flightQuoteId || null,
+    solicitud: String(record.solicitud || "").trim(),
+    contacto: String(record.contacto || "").trim(),
+    whatsapp: String(record.whatsapp || "").trim(),
+    observaciones: String(record.observaciones || "").trim(),
     notes: Array.isArray(record.notes) ? record.notes : [],
     attachments: Array.isArray(record.attachments) ? record.attachments : [],
     timeline: Array.isArray(record.timeline) ? record.timeline : [],
@@ -293,88 +306,125 @@ function applyFilters(records, filters = {}) {
   });
 }
 
-async function tryRemoteList() {
-  const { data, error } = await supabase.from(TABLE_NAME).select("*").order("updatedAt", { ascending: false });
-  if (error) {
-    throw error;
+function normalizeOpportunity(row) {
+  return serializeRecord({
+    id: row.id,
+    folio: row.folio || row.quote_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    customerName: row.cliente,
+    companyName: row.empresa,
+    email: row.email,
+    phone: row.telefono,
+    route: row.ruta,
+    origin: row.origen,
+    destination: row.destino,
+    passengers: row.pasajeros,
+    provider: row.proveedor,
+    status: row.status,
+    providerPrice: row.precio_proveedor,
+    fbo: row.costo_fbo,
+    salePrice: row.precio_final,
+    profit: row.utilidad,
+    margin: row.margen,
+    currency: row.moneda,
+    nextFollowUp: row.proximo_seguimiento,
+    executive: row.responsable,
+    requestType: row.tipo_servicio || row.solicitud,
+    potentialRevenue: row.precio_final,
+    confirmedRevenue: ["GANADA", "ACEPTADA", "FACTURADA", "PAGADA"].includes(String(row.status || "").toUpperCase())
+      ? row.precio_final
+      : 0,
+    expectedProfit: row.utilidad,
+    flightQuoteId: row.quote_id,
+    solicitud: row.solicitud,
+    contacto: row.contacto,
+    whatsapp: row.whatsapp,
+    observaciones: row.observaciones,
+    notes: [],
+    attachments: [],
+    timeline: row.observaciones
+      ? [{ id: `obs-${row.id}`, title: "Observaciones", detail: row.observaciones, createdAt: row.updated_at || row.created_at }]
+      : [],
+  });
+}
+
+function buildOpportunityPayload(record) {
+  const payload = {
+    cliente: String(record.customerName || "").trim(),
+    empresa: String(record.companyName || "").trim() || null,
+    contacto: String(record.contacto || "").trim() || null,
+    telefono: String(record.phone || "").trim() || null,
+    whatsapp: String(record.whatsapp || "").trim() || null,
+    email: String(record.email || "").trim() || null,
+    solicitud: String(record.solicitud || record.requestType || "").trim(),
+    tipo_servicio: String(record.requestType || "").trim() || null,
+    ruta: String(record.route || "").trim() || null,
+    origen: String(record.origin || "").trim().toUpperCase() || null,
+    destino: String(record.destination || "").trim().toUpperCase() || null,
+    pasajeros: toNumber(record.passengers),
+    proveedor: String(record.provider || "").trim() || null,
+    responsable: String(record.executive || "").trim() || null,
+    status: String(record.status || "PENDIENTE").trim().toUpperCase(),
+    precio_proveedor: toNumber(record.providerPrice),
+    costo_fbo: toNumber(record.fbo),
+    precio_final: toNumber(record.salePrice),
+    moneda: String(record.currency || "USD").trim().toUpperCase(),
+    proximo_seguimiento: record.nextFollowUp || null,
+    observaciones: String(record.observaciones || "").trim() || null,
+    activo: true,
+  };
+
+  if (record.flightQuoteId) {
+    payload.quote_id = record.flightQuoteId;
   }
-  return Array.isArray(data) ? data.map(serializeRecord) : [];
+
+  return payload;
+}
+
+async function tryRemoteList() {
+  const { data, error } = await supabase
+    .from(TABLE_NAME)
+    .select("*")
+    .eq("activo", true)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(normalizeOpportunity);
 }
 
 async function tryRemoteUpsert(record) {
-  const payload = serializeRecord(record);
-  const { data, error } = await supabase.from(TABLE_NAME).upsert(payload, { onConflict: "id" }).select("*").single();
-  if (error) {
-    throw error;
-  }
-  return serializeRecord(data || payload);
+  const payload = buildOpportunityPayload(record);
+  const isPersisted = record.id && !String(record.id).startsWith("cm-");
+  const query = isPersisted
+    ? supabase.from(TABLE_NAME).update(payload).eq("id", record.id)
+    : supabase.from(TABLE_NAME).insert(payload);
+  const { data, error } = await query.select("*").single();
+  if (error) throw error;
+  return normalizeOpportunity(data);
 }
 
 async function tryRemoteDelete(recordId) {
-  const { error } = await supabase.from(TABLE_NAME).delete().eq("id", recordId);
+  const { error } = await supabase.from(TABLE_NAME).update({ activo: false }).eq("id", recordId);
   if (error) {
     throw error;
   }
 }
 
 export async function listCommercialRecords(filters = {}) {
-  try {
-    const records = await tryRemoteList();
-    return {
-      rows: applyFilters(records, filters),
-      source: "supabase",
-    };
-  } catch {
-    const localRecords = readLocalRecords().sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-    return {
-      rows: applyFilters(localRecords, filters),
-      source: "local",
-    };
-  }
+  const records = await tryRemoteList();
+  return { rows: applyFilters(records, filters), source: "supabase" };
 }
 
 export async function saveCommercialRecord(record) {
-  const payload = serializeRecord({
-    ...record,
-    updatedAt: new Date().toISOString(),
-  });
-
-  try {
-    const saved = await tryRemoteUpsert(payload);
-    return {
-      row: saved,
-      source: "supabase",
-    };
-  } catch {
-    const current = readLocalRecords();
-    const index = current.findIndex((item) => item.id === payload.id);
-    if (index >= 0) {
-      current.splice(index, 1, payload);
-    } else {
-      current.unshift(payload);
-    }
-    writeLocalRecords(current);
-    return {
-      row: payload,
-      source: "local",
-    };
-  }
+  const saved = await tryRemoteUpsert(record);
+  return { row: saved, source: "supabase" };
 }
 
 export async function removeCommercialRecord(recordId) {
-  try {
-    await tryRemoteDelete(recordId);
-    return {
-      source: "supabase",
-    };
-  } catch {
-    const filtered = readLocalRecords().filter((item) => item.id !== recordId);
-    writeLocalRecords(filtered);
-    return {
-      source: "local",
-    };
-  }
+  await tryRemoteDelete(recordId);
+  return { source: "supabase" };
 }
+
 
 function exportRows(rows) {
   return rows.map((row) => ({
@@ -483,4 +533,3 @@ export function createAttachmentFromFile(file) {
     createdAt: new Date().toISOString(),
   };
 }
-

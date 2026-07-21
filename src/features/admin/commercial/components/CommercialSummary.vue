@@ -53,36 +53,10 @@ const kpis = computed(() => [
   },
 ]);
 
-const stageBars = computed(() => {
-  const stages = [
-    { label: "Pendiente", value: props.stats.providerPending, tone: "amber" },
-    { label: "Negociación", value: props.stats.negotiation, tone: "blue" },
-    { label: "Ganadas", value: props.stats.accepted + props.stats.sold, tone: "green" },
-    { label: "Perdidas", value: props.stats.lost, tone: "red" },
-  ];
-  const max = Math.max(...stages.map((stage) => stage.value), 1);
-
-  return stages.map((stage) => ({
-    ...stage,
-    percent: `${Math.max(10, Math.round((stage.value / max) * 100))}%`,
-  }));
-});
 </script>
 
 <template>
   <section class="summary-shell">
-    <div class="topline panel">
-      <div class="topline-title">
-        <strong>Pipeline Comercial</strong>
-        <span>{{ stats.total }} oportunidades activas</span>
-      </div>
-      <div class="topline-metrics">
-        <span>{{ money(summary.activePipelineValue) }} pipeline</span>
-        <span>{{ summary.conversionRate }}% conversión</span>
-        <span>{{ summary.followUpToday }} seguimientos</span>
-      </div>
-    </div>
-
     <div class="summary-grid">
       <article v-for="kpi in kpis" :key="kpi.label" class="kpi-card premium-card">
         <span class="kpi-label">{{ kpi.label }}</span>
@@ -91,60 +65,6 @@ const stageBars = computed(() => {
       </article>
     </div>
 
-    <div class="insights-grid">
-      <section class="chart-card premium-card">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Visión rápida</p>
-            <h3>Pipeline por estado</h3>
-          </div>
-          <span class="source-pill">{{ source === "supabase" ? "Supabase" : "Respaldo local" }}</span>
-        </div>
-
-        <div class="stage-bars">
-          <div v-for="stage in stageBars" :key="stage.label" class="stage-row">
-            <div class="stage-copy">
-              <strong>{{ stage.label }}</strong>
-              <span>{{ stage.value }}</span>
-            </div>
-            <div class="stage-track">
-              <div class="stage-fill" :class="`tone-${stage.tone}`" :style="{ width: stage.percent }"></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="funnel-card premium-card">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Embudo</p>
-            <h3>Recorrido comercial</h3>
-          </div>
-        </div>
-
-        <div class="funnel-list">
-          <div class="funnel-step">
-            <strong>{{ stats.total }}</strong>
-            <span>Leads / oportunidades</span>
-          </div>
-          <div class="funnel-arrow">↓</div>
-          <div class="funnel-step">
-            <strong>{{ stats.open + stats.providerPending }}</strong>
-            <span>Cotizaciones activas</span>
-          </div>
-          <div class="funnel-arrow">↓</div>
-          <div class="funnel-step">
-            <strong>{{ stats.negotiation }}</strong>
-            <span>Negociaciones</span>
-          </div>
-          <div class="funnel-arrow">↓</div>
-          <div class="funnel-step accent">
-            <strong>{{ stats.accepted + stats.sold }}</strong>
-            <span>Ventas cerradas</span>
-          </div>
-        </div>
-      </section>
-    </div>
   </section>
 </template>
 

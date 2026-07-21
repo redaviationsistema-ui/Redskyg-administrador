@@ -1,15 +1,12 @@
 <script setup>
 import { computed, onMounted, watch } from "vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
-import CommercialAttachments from "./components/CommercialAttachments.vue";
 import CommercialDrawer from "./components/CommercialDrawer.vue";
 import CommercialFilters from "./components/CommercialFilters.vue";
 import CommercialForm from "./components/CommercialForm.vue";
-import CommercialNotes from "./components/CommercialNotes.vue";
 import CommercialStatus from "./components/CommercialStatus.vue";
 import CommercialSummary from "./components/CommercialSummary.vue";
 import CommercialTable from "./components/CommercialTable.vue";
-import CommercialTimeline from "./components/CommercialTimeline.vue";
 import { useCommercial } from "./composables/useCommercial";
 
 const commercial = useCommercial();
@@ -125,6 +122,7 @@ onMounted(async () => {
       @note="focusNote"
       @attachment="focusAttachment"
       @delete="commercial.removeRow"
+      @retry="commercial.refresh"
     />
 
     <CommercialDrawer :open="drawerOpen" :title="drawerTitle" @close="commercial.closeDrawer()">
@@ -159,15 +157,6 @@ onMounted(async () => {
           />
         </div>
 
-        <div class="drawer-secondary">
-          <CommercialTimeline :items="selectedRecord.timeline || []" @add="commercial.addFollowUp" />
-          <CommercialNotes :items="selectedRecord.notes || []" @add="commercial.addNote" />
-          <CommercialAttachments
-            :items="selectedRecord.attachments || []"
-            @add="commercial.addAttachment"
-            @remove="commercial.removeAttachment"
-          />
-        </div>
       </div>
     </CommercialDrawer>
   </section>
@@ -224,7 +213,7 @@ onMounted(async () => {
 
 .drawer-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 
