@@ -1313,9 +1313,21 @@ const generatePDF = async () => {
               <td data-label="Codigo">{{ item.code }}</td>
 
               <td class="description" data-label="Part Number / Description">
-                <div><strong>PART NUMBER:</strong> {{ item.part_number }}</div>
+                <div class="description-field">
+                  <strong>PART NUMBER:</strong>
+                  <input
+                    v-model="item.part_number"
+                    @blur="updateItemValue(item)"
+                  />
+                </div>
 
-                <div><strong>DESCRIPTION:</strong> {{ item.description }}</div>
+                <div class="description-field">
+                  <strong>DESCRIPTION:</strong>
+                  <input
+                    v-model="item.description"
+                    @blur="updateItemValue(item)"
+                  />
+                </div>
               </td>
 
               <td class="cell-cd" data-label="CD">
@@ -1768,9 +1780,14 @@ select:focus {
 
 /* DESCRIPTION */
 
-.description div {
+.description-field {
   margin-bottom: 3px;
   font-size: 13px;
+}
+
+.description-field strong {
+  display: block;
+  margin-bottom: 6px;
 }
 
 .col-cd,

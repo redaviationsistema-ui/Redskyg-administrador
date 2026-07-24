@@ -177,7 +177,7 @@ function handleSubmit() {
       </label>
 
       <label class="field">
-        <span>Ingreso potencial</span>
+        <span>Comi</span>
         <input v-model="form.potentialRevenue" :disabled="isReadOnly" type="number" min="0" step="0.01" />
       </label>
 

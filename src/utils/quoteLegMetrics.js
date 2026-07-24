@@ -143,6 +143,50 @@ function formatDuration(hours) {
   return `${minutes}m`;
 }
 
+function getStoredDistanceLabel(leg) {
+  const directDistance = toNumber(leg?.distance_nm ?? leg?.miles);
+  if (Number.isFinite(directDistance) && directDistance > 0) {
+    return String(Math.round(directDistance));
+  }
+
+  const label = String(leg?.distanceLabel || "").trim();
+  if (label && label !== EMPTY_VALUE && label !== "0") {
+    return label.replace(/\s*NM$/i, "").trim();
+  }
+
+  return EMPTY_VALUE;
+}
+
+function getStoredDurationHours(leg) {
+  return (
+    toNumber(leg?.block_time) ??
+    toNumber(leg?.estimated_air_time) ??
+    toNumber(leg?.billable_hours) ??
+    toNumber(leg?.billableHours) ??
+    toNumber(leg?.estimatedHours) ??
+    toNumber(leg?.durationHours)
+  );
+}
+
+function getStoredDurationLabel(leg) {
+  const storedHours = getStoredDurationHours(leg);
+  if (Number.isFinite(storedHours) && storedHours > 0) {
+    return formatDuration(storedHours);
+  }
+
+  const label = String(leg?.durationLabel || "").trim();
+  if (
+    label &&
+    label !== EMPTY_VALUE &&
+    !/^0+h(?:\s+0+m)?$/i.test(label) &&
+    !/^0+m$/i.test(label)
+  ) {
+    return label;
+  }
+
+  return EMPTY_VALUE;
+}
+
 export function getLegMetricKey(leg, index = 0) {
   return String(leg?.id || `${leg?.from_airport || "from"}-${leg?.to_airport || "to"}-${index}`);
 }
@@ -160,12 +204,22 @@ export async function getQuoteLegMetricsMap(legs) {
     const speedKnots = getCruiseSpeedKnots(leg, aircraftDirectory);
     const durationHours =
       distanceNm && speedKnots && speedKnots > 0 ? distanceNm / speedKnots : null;
+    const storedDistanceLabel = getStoredDistanceLabel(leg);
+    const storedDurationHours = getStoredDurationHours(leg);
+    const storedDurationLabel = getStoredDurationLabel(leg);
 
     metricsMap[key] = {
-      distanceNm,
-      distanceLabel: Number.isFinite(distanceNm) ? String(distanceNm) : EMPTY_VALUE,
-      durationHours,
-      durationLabel: formatDuration(durationHours),
+      distanceNm: Number.isFinite(distanceNm) ? distanceNm : toNumber(leg?.distance_nm ?? leg?.miles),
+      distanceLabel:
+        Number.isFinite(distanceNm) && distanceNm > 0
+          ? String(distanceNm)
+          : storedDistanceLabel,
+      durationHours:
+        Number.isFinite(durationHours) && durationHours > 0 ? durationHours : storedDurationHours,
+      durationLabel:
+        Number.isFinite(durationHours) && durationHours > 0
+          ? formatDuration(durationHours)
+          : storedDurationLabel,
     };
   });
 

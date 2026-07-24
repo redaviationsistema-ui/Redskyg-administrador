@@ -842,6 +842,7 @@ onBeforeUnmount(() => {
             <tr>
               <th>Quote</th>
               <th>Customer</th>
+              <th>Numero</th>
               <th>Status</th>
               <th>Segimiento</th>
               <th>Date</th>
@@ -867,8 +868,10 @@ onBeforeUnmount(() => {
                 <div class="customer-cell">
                   <strong>{{ quote.client_contact || "No contact" }}</strong>
                   <span>{{ quote.client_email || "No email" }}</span>
-                  <span>{{ quote.client_phone || "No phone" }}</span>
                 </div>
+              </td>
+              <td data-label="Numero">
+                <span class="phone-text">{{ quote.client_phone || "No phone" }}</span>
               </td>
               <td data-label="Status">
                 <span class="status-badge" :class="getRowClass(quote.status)">
@@ -1396,7 +1399,7 @@ h1 {
 
 .table {
   width: 100%;
-  min-width: 1120px;
+  min-width: 1210px;
   border-collapse: collapse;
   table-layout: fixed;
   background: transparent;
@@ -1433,31 +1436,36 @@ h1 {
 
 .table th:nth-child(3),
 .table td:nth-child(3) {
-  width: 90px;
+  width: 125px;
 }
 
 .table th:nth-child(4),
 .table td:nth-child(4) {
-  width: 80px;
+  width: 90px;
 }
 
 .table th:nth-child(5),
 .table td:nth-child(5) {
-  width: 100px;
+  width: 80px;
 }
 
 .table th:nth-child(6),
 .table td:nth-child(6) {
-  width: 160px;
+  width: 100px;
 }
 
 .table th:nth-child(7),
 .table td:nth-child(7) {
-  width: 175px;
+  width: 160px;
 }
 
 .table th:nth-child(8),
 .table td:nth-child(8) {
+  width: 175px;
+}
+
+.table th:nth-child(9),
+.table td:nth-child(9) {
   width: 210px;
 }
 
@@ -1499,6 +1507,14 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.phone-text {
+  display: inline-block;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .description-cell {

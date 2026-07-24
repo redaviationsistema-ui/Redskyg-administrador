@@ -5,6 +5,10 @@ import {
   getPrimaryQuoteRoute,
 } from "@/utils/quoteRouteDisplay";
 import { getLegMetricKey, getQuoteLegMetricsMap } from "@/utils/quoteLegMetrics";
+import {
+  getPreferredAircraftName,
+  resolveAircraftDisplayName,
+} from "@/utils/aircraftDisplay";
 
 const PAGE = {
   width: 210,
@@ -177,6 +181,10 @@ function formatPdfTime(value) {
   const match = label.match(/(?:(\d+)h)?\s*(?:(\d+)m)?/i);
   if (!match || (!match[1] && !match[2])) return "-";
 
+  if (Number(match[1] || 0) === 0 && Number(match[2] || 0) === 0) {
+    return "-";
+  }
+
   return `${String(Number(match[1] || 0)).padStart(2, "0")}:${String(Number(match[2] || 0)).padStart(2, "0")}`;
 }
 
@@ -324,14 +332,26 @@ function getPdfLegs(quote) {
 }
 
 async function getPdfLegMetricsMap(quote, legs) {
+  const computedMetrics = await getQuoteLegMetricsMap(legs);
+
   if (!isSavedFlightQuote(quote)) {
-    return getQuoteLegMetricsMap(legs);
+    return computedMetrics;
   }
 
   return legs.reduce((metrics, leg, index) => {
+    const computed = computedMetrics[getLegMetricKey(leg, index)] || {};
+    const savedDistance = String(leg?.distanceLabel || "").trim();
+    const savedDuration = String(leg?.durationLabel || "").trim();
+    const hasSavedDistance = savedDistance && savedDistance !== "-" && savedDistance !== "0";
+    const hasSavedDuration =
+      savedDuration &&
+      savedDuration !== "-" &&
+      !/^0+h(?:\s+0+m)?$/i.test(savedDuration) &&
+      !/^0+m$/i.test(savedDuration);
+
     metrics[getLegMetricKey(leg, index)] = {
-      distanceLabel: leg.distanceLabel,
-      durationLabel: leg.durationLabel,
+      distanceLabel: hasSavedDistance ? savedDistance : computed.distanceLabel,
+      durationLabel: hasSavedDuration ? savedDuration : computed.durationLabel,
     };
     return metrics;
   }, {});
@@ -343,10 +363,22 @@ function getQuoteRoutePath(quote) {
     : getDisplayRoutePath(quote);
 }
 
-function getQuoteAircraftName(quote, firstRoute) {
-  return isSavedFlightQuote(quote)
-    ? quote?.aircraft_name || "-"
-    : firstRoute?.aircraft_fleet?.name || firstRoute?.aircraft_id || "-";
+async function getQuoteAircraftName(quote, firstRoute) {
+  const fallbackName = getPreferredAircraftName(
+    isSavedFlightQuote(quote) ? quote?.aircraft_name : firstRoute?.aircraft_fleet?.name,
+    firstRoute?.aircraft_id || quote?.aircraft_id,
+    "-",
+  );
+
+  if (fallbackName !== "-") return fallbackName;
+
+  return resolveAircraftDisplayName({
+    aircraftId: firstRoute?.aircraft_id || quote?.aircraft_id,
+    aircraftName: isSavedFlightQuote(quote)
+      ? quote?.aircraft_name
+      : firstRoute?.aircraft_fleet?.name,
+    fallback: "-",
+  });
 }
 
 function getTripType(quote) {
@@ -621,7 +653,7 @@ export async function generateFlightQuotePdf(quote) {
   const firstRoute = isSavedFlightQuote(quote)
     ? routes[0] || {}
     : getPrimaryQuoteRoute(quote) || {};
-  const aircraftName = getQuoteAircraftName(quote, firstRoute);
+  const aircraftName = await getQuoteAircraftName(quote, firstRoute);
   const tripType = getTripType(quote);
   const costRows = getQuoteCostRows(quote, customerRoutes);
   const total = getQuoteTotal(quote, costRows);
