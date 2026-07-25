@@ -46,6 +46,30 @@ watch(() => props.initialValue, syncForm, { immediate: true, deep: true });
 
 const isReadOnly = computed(() => props.mode === "view");
 
+function statusLabel(status) {
+  const progressMap = {
+    abierta: 0,
+    pendiente: 0,
+    contactado: 10,
+    cotizando: 20,
+    cotizado: 30,
+    "solicitada proveedor": 40,
+    "pendiente proveedor": 40,
+    "enviada cliente": 50,
+    "en negociacion": 60,
+    aceptada: 70,
+    "vuelo vendido": 80,
+    ganada: 90,
+    facturada: 95,
+    pagada: 100,
+    "no aceptada": 0,
+    perdida: 0,
+    cancelada: 0,
+  };
+
+  return `${status} - ${progressMap[status] ?? 0}%`;
+}
+
 function handleSubmit() {
   emit("submit", clonePlain(form));
 }
@@ -128,7 +152,7 @@ function handleSubmit() {
         <span>Estatus</span>
         <select v-model="form.status" :disabled="isReadOnly">
           <option v-for="status in statusOptions" :key="status" :value="status">
-            {{ status }}
+            {{ statusLabel(status) }}
           </option>
         </select>
       </label>
@@ -177,7 +201,7 @@ function handleSubmit() {
       </label>
 
       <label class="field">
-        <span>Comi</span>
+        <span>Comisión</span>
         <input v-model="form.potentialRevenue" :disabled="isReadOnly" type="number" min="0" step="0.01" />
       </label>
 

@@ -28,10 +28,33 @@ function statusClass(value) {
 }
 
 function statusLabel(value) {
-  return String(value || "")
+  const normalizedValue = String(value || "").trim().toLowerCase();
+  const progressMap = {
+    abierta: 0,
+    pendiente: 0,
+    contactado: 10,
+    cotizando: 20,
+    cotizado: 30,
+    "solicitada proveedor": 40,
+    "pendiente proveedor": 40,
+    "enviada cliente": 50,
+    "en negociacion": 60,
+    aceptada: 70,
+    "vuelo vendido": 80,
+    ganada: 90,
+    facturada: 95,
+    pagada: 100,
+    "no aceptada": 0,
+    perdida: 0,
+    cancelada: 0,
+  };
+
+  const label = String(value || "")
     .split(" ")
     .map((item) => item.charAt(0).toUpperCase() + item.slice(1))
     .join(" ");
+
+  return `${label} - ${progressMap[normalizedValue] ?? 0}%`;
 }
 </script>
 

@@ -12,6 +12,7 @@ export const COMMERCIAL_STATUS_OPTIONS = [
   "enviada cliente",
   "en negociacion",
   "aceptada",
+  "vuelo vendido",
   "ganada",
   "facturada",
   "pagada",
