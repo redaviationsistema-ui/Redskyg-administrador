@@ -3,6 +3,10 @@ import { computed, ref, watch } from "vue";
 import { supabase } from "@/supabase";
 import { generateFlightQuotePdf } from "@/utils/flightQuotePdf";
 import {
+  getPreferredAircraftName,
+  resolveAircraftDisplayName,
+} from "@/utils/aircraftDisplay";
+import {
   getDisplayQuoteLegs,
   getDisplayRoutePath,
   getFinalQuoteRoute,
@@ -96,6 +100,7 @@ const firstRoute = computed(() => getPrimaryQuoteRoute(props.quote));
 const lastRoute = computed(() => getFinalQuoteRoute(props.quote));
 const routePath = computed(() => getDisplayRoutePath(props.quote));
 const routeMetrics = ref({});
+const resolvedAircraftName = ref(EMPTY_VALUE);
 const reservationForm = ref({
   startDateTime: "",
   endDateTime: "",
@@ -156,7 +161,7 @@ const profileRows = computed(() => {
   const passengerCount = Number(firstRoute.value?.passengers ?? props.quote?.passengers ?? 0);
 
   return [
-    ["AIRCRAFT", getAircraftName(firstRoute.value)],
+    ["AIRCRAFT", resolvedAircraftName.value],
     ["ROUTE", routePath.value],
     ["TRIP TYPE", tripType.value],
     passengerCount > 0 ? ["PASSENGERS", passengerCount] : null,
@@ -204,7 +209,7 @@ function formatDistanceLabel(value) {
 function formatTimeLabel(metrics) {
   const hours = Number(metrics?.durationHours);
 
-  if (Number.isFinite(hours) && hours >= 0) {
+  if (Number.isFinite(hours) && hours > 0) {
     const minutes = Math.round(hours * 60);
     return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
   }
@@ -212,6 +217,10 @@ function formatTimeLabel(metrics) {
   const label = String(metrics?.durationLabel || "").trim();
   const hourMatch = label.match(/(?:(\d+)h)?\s*(?:(\d+)m)?/i);
   if (!hourMatch || (!hourMatch[1] && !hourMatch[2])) return EMPTY_VALUE;
+
+  if (Number(hourMatch[1] || 0) === 0 && Number(hourMatch[2] || 0) === 0) {
+    return EMPTY_VALUE;
+  }
 
   return `${String(Number(hourMatch[1] || 0)).padStart(2, "0")}:${String(Number(hourMatch[2] || 0)).padStart(2, "0")}`;
 }
@@ -256,7 +265,26 @@ const costRows = computed(() => [
 ]);
 
 function getAircraftName(route) {
-  return route?.aircraft_fleet?.name || route?.aircraft_id || EMPTY_VALUE;
+  return getPreferredAircraftName(
+    route?.aircraft_fleet?.name || props.quote?.aircraft_name,
+    route?.aircraft_id || props.quote?.aircraft_id,
+    EMPTY_VALUE,
+  );
+}
+
+async function loadAircraftName() {
+  const currentName = getAircraftName(firstRoute.value);
+
+  if (currentName !== EMPTY_VALUE) {
+    resolvedAircraftName.value = currentName;
+    return;
+  }
+
+  resolvedAircraftName.value = await resolveAircraftDisplayName({
+    aircraftId: firstRoute.value?.aircraft_id || props.quote?.aircraft_id,
+    aircraftName: firstRoute.value?.aircraft_fleet?.name || props.quote?.aircraft_name,
+    fallback: EMPTY_VALUE,
+  });
 }
 
 function getRouteMetrics(route, index) {
@@ -521,6 +549,7 @@ watch(
   routes,
   async (legs) => {
     routeMetrics.value = await getQuoteLegMetricsMap(legs || []);
+    await loadAircraftName();
   },
   { immediate: true },
 );

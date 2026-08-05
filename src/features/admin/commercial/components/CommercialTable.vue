@@ -67,12 +67,23 @@ function priorityMeta(row) {
 
 function progressValue(row) {
   const map = {
-    abierta: 28,
-    "pendiente proveedor": 42,
-    "en negociacion": 68,
-    aceptada: 88,
-    "vuelo vendido": 100,
-    perdida: 18,
+    abierta: 0,
+    pendiente: 0,
+    contactado: 10,
+    cotizando: 20,
+    cotizado: 30,
+    "solicitada proveedor": 40,
+    "pendiente proveedor": 40,
+    "enviada cliente": 50,
+    "en negociacion": 60,
+    aceptada: 70,
+    "vuelo vendido": 80,
+    ganada: 90,
+    facturada: 95,
+    pagada: 100,
+    "no aceptada": 0,
+    perdida: 0,
+    cancelada: 0,
   };
   return map[row.status] || 20;
 }
@@ -80,11 +91,22 @@ function progressValue(row) {
 function stageLabel(row) {
   const map = {
     abierta: "Solicitud",
+    pendiente: "Pendiente",
+    contactado: "Contacto",
+    cotizando: "Cotizando",
+    cotizado: "Cotizado",
+    "solicitada proveedor": "Proveedor",
     "pendiente proveedor": "Proveedor",
-    "en negociacion": "Cliente",
+    "enviada cliente": "Cliente",
+    "en negociacion": "Negociacion",
     aceptada: "Contrato",
     "vuelo vendido": "Vuelo",
-    perdida: "Cierre",
+    ganada: "Ganada",
+    facturada: "Facturada",
+    pagada: "Pagada",
+    "no aceptada": "No aceptada",
+    perdida: "Perdida",
+    cancelada: "Cancelada",
   };
   return map[row.status] || "Solicitud";
 }

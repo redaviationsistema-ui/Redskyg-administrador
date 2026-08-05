@@ -25,6 +25,11 @@ function getSavedFlightQuoteLegs(quote) {
         aircraft_fleet: {
           name: quote?.aircraft_name || EMPTY_VALUE,
         },
+        distance_nm: leg?.distance_nm ?? null,
+        cruise_speed_knots: leg?.cruise_speed_knots ?? null,
+        estimated_air_time: leg?.estimated_air_time ?? null,
+        block_time: leg?.block_time ?? null,
+        billable_hours: leg?.billable_hours ?? null,
         passengers: leg?.passengers || quote?.passengers || null,
         positioning: isPositioning,
         positioningLabel: isReturnToBase ? "Regreso a base" : "Reposicionamiento",
@@ -61,6 +66,12 @@ function getSnapshotLegs(quote) {
         aircraft_fleet: {
           name: quote?.aircraft_name || EMPTY_VALUE,
         },
+        distance_nm: leg?.distance_nm ?? leg?.miles ?? null,
+        cruise_speed_knots: leg?.cruise_speed_knots ?? leg?.speedKnots ?? null,
+        estimated_air_time:
+          leg?.estimated_air_time ?? leg?.cruiseHours ?? null,
+        block_time: leg?.block_time ?? leg?.estimatedHours ?? null,
+        billable_hours: leg?.billable_hours ?? leg?.billableHours ?? null,
         passengers: leg?.passengers || quote?.passengers || null,
         positioning: isPositioning,
         positioningLabel: isReturnToBase ? "Regreso a base" : "Reposicionamiento",

@@ -620,6 +620,8 @@ const generatePDF = () => {
       "CUSTOMER & SALES INFORMATION",
       [
         `Contact: ${client_contact || ""}`,
+        `Phone: ${client_phone || ""}`,
+        `Email: ${client_email || ""}`,
         `EXW: ${client_exw || ""}`,
         `Your Ref#: ${client_ref || ""}`,
       ],
@@ -632,7 +634,7 @@ const generatePDF = () => {
       10,
       86,
       190,
-      30,
+      36,
     );
 
     // ----------------------
@@ -681,7 +683,7 @@ CERT TYPE: ${item.cert_type ?? item.certType ?? "CofC"}`,
     // ----------------------
 
     autoTable(doc, {
-      startY: 120,
+      startY: 126,
       theme: "grid",
 
       tableWidth: 190,
