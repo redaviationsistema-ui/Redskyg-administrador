@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test"
+    "test": "node --test",
+    "import:response-templates": "node scripts/import-response-templates.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",

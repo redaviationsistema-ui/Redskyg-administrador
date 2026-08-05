@@ -273,8 +273,7 @@ async function editPreviewQuote() {
 
   await loadAirportOptions();
   pdfEditor.value = buildPdfEditorState(pdfPreviewQuote.value);
-  syncCurrencyTotals();
-  recalculateTaxBreakdown();
+  syncTotalFromBreakdown();
   editingPdf.value = true;
 }
 
@@ -282,6 +281,7 @@ function buildPdfEditorState(quote) {
   const savedBreakdownRows = quote.calculation_snapshot?.pdfBreakdownRows;
   const cleanedBreakdownRows = Array.isArray(savedBreakdownRows)
     ? savedBreakdownRows
+        .filter((row) => !/tax|iva|impuesto/i.test(String(row?.label || "")))
         .map((row) => ({
           label: row.label || "Concept",
           value: Number(row.value || 0),
@@ -305,7 +305,6 @@ function buildPdfEditorState(quote) {
           label: "Operational Expenses",
           value: Number(quote.operational_expenses_usd || 0),
         },
-        { label: "Tax (16%)", value: Number(quote.tax_amount_usd || 0) },
       ];
 
   return {
@@ -334,7 +333,7 @@ function buildPdfEditorState(quote) {
     return_to_base_cost_usd: Number(quote.return_to_base_cost_usd || 0),
     overnight_cost_usd: Number(quote.overnight_cost_usd || 0),
     operational_expenses_usd: Number(quote.operational_expenses_usd || 0),
-    tax_amount_usd: Number(quote.tax_amount_usd || 0),
+    tax_amount_usd: 0,
     total_usd: Number(quote.total_usd || 0),
     exchange_rate: Number(quote.exchange_rate || 0),
     total_mxn: Number(quote.total_mxn || 0),
@@ -381,44 +380,37 @@ function updateEditorTotal() {
 
   pdfEditor.value.total_usd = Number(pdfEditor.value.total_usd || 0);
   syncCurrencyTotals();
-  recalculateTaxBreakdown();
 }
 
-function updateEditorExchangeRate() {
+function updateEditorExchangeRate(event) {
   if (!pdfEditor.value) return;
 
-  pdfEditor.value.exchange_rate = Number(pdfEditor.value.exchange_rate || 0);
+  pdfEditor.value.exchange_rate = Number(
+    event?.target?.value ?? pdfEditor.value.exchange_rate ?? 0,
+  );
+  syncTotalFromBreakdown();
+}
+
+function syncTotalFromBreakdown() {
+  if (!pdfEditor.value) return;
+
+  const total = pdfEditor.value.breakdownRows.reduce(
+    (sum, row) => sum + Number(row.value || 0),
+    0,
+  );
+
+  pdfEditor.value.total_usd = Number(total.toFixed(2));
+  syncStandardBreakdownFields();
   syncCurrencyTotals();
 }
 
-function isTaxBreakdownRow(row) {
-  return /tax|iva|impuesto/i.test(String(row?.label || ""));
-}
-
-function recalculateTaxBreakdown() {
-  if (!pdfEditor.value) return;
-
-  const taxRow = pdfEditor.value.breakdownRows.find(isTaxBreakdownRow);
-  const subtotal = pdfEditor.value.breakdownRows
-    .filter((row) => !isTaxBreakdownRow(row))
-    .reduce((sum, row) => sum + Number(row.value || 0), 0);
-
-  if (!taxRow) {
-    syncStandardBreakdownFields();
-    return;
-  }
-
-  const total = Number(pdfEditor.value.total_usd || 0);
-  taxRow.value = Number(Math.max(total - subtotal, 0).toFixed(2));
-  syncStandardBreakdownFields();
-}
-
-function handleBreakdownValueInput(row) {
-  recalculateTaxBreakdown();
+function handleBreakdownValueInput(row, event) {
+  row.value = Number(event?.target?.value || 0);
+  syncTotalFromBreakdown();
 }
 
 function handleBreakdownLabelInput() {
-  recalculateTaxBreakdown();
+  syncTotalFromBreakdown();
 }
 
 function syncStandardBreakdownFields() {
@@ -435,14 +427,13 @@ function syncStandardBreakdownFields() {
   pdfEditor.value.flight_cost_usd = findRowValue([/flight\s*cost/i]);
   pdfEditor.value.overnight_cost_usd = findRowValue([/overnight/i]);
   pdfEditor.value.operational_expenses_usd = findRowValue([/operational/i]);
-  pdfEditor.value.tax_amount_usd = findRowValue([/tax/i]);
+  pdfEditor.value.tax_amount_usd = 0;
 }
 
 function getBreakdownSubtotal() {
   if (!pdfEditor.value) return 0;
 
   return pdfEditor.value.breakdownRows
-    .filter((row) => !isTaxBreakdownRow(row))
     .reduce((sum, row) => sum + Number(row.value || 0), 0);
 }
 
@@ -475,7 +466,7 @@ function buildPdfCalculationSnapshot() {
       return_to_base_cost_usd: Number(pdfEditor.value.return_to_base_cost_usd || 0),
       overnight_cost_usd: Number(pdfEditor.value.overnight_cost_usd || 0),
       operational_expenses_usd: Number(pdfEditor.value.operational_expenses_usd || 0),
-      tax_amount_usd: Number(pdfEditor.value.tax_amount_usd || 0),
+      tax_amount_usd: 0,
       total_usd: Number(pdfEditor.value.total_usd || 0),
       exchange_rate: Number(pdfEditor.value.exchange_rate || 0),
       total_mxn: pdfEditor.value.show_mxn_in_pdf
@@ -500,7 +491,7 @@ function removeBreakdownRow(index) {
   if (!pdfEditor.value) return;
 
   pdfEditor.value.breakdownRows.splice(index, 1);
-  recalculateTaxBreakdown();
+  syncTotalFromBreakdown();
 }
 
 function addEditorLeg() {
@@ -573,11 +564,12 @@ async function savePdfEditor() {
   savingPdfEdit.value = true;
 
   try {
+    syncTotalFromBreakdown();
     const routeSummary =
       pdfEditor.value.route_summary.trim() ||
       buildRouteSummaryFromLegs(pdfEditor.value.legs);
     const subtotalUsd = getBreakdownSubtotal();
-    const taxAmountUsd = Number(pdfEditor.value.tax_amount_usd || 0);
+    const taxAmountUsd = 0;
     const totalUsd = Number(pdfEditor.value.total_usd || 0);
     if (!pdfEditor.value.show_mxn_in_pdf) {
       pdfEditor.value.total_mxn = 0;
@@ -585,7 +577,7 @@ async function savePdfEditor() {
     const exchangeRate = Number(pdfEditor.value.exchange_rate || 0);
     const showTotalMxn = Boolean(pdfEditor.value.show_mxn_in_pdf);
     const totalMxn = showTotalMxn ? Number(pdfEditor.value.total_mxn || 0) || null : null;
-    const taxRate = subtotalUsd > 0 ? Number((taxAmountUsd / subtotalUsd).toFixed(4)) : 0;
+    const taxRate = 0;
     const billableHours = pdfEditor.value.legs.reduce(
       (sum, leg) => sum + Number(leg.billable_hours || 0),
       0,
@@ -1011,7 +1003,7 @@ onBeforeUnmount(() => {
                   type="number"
                   min="0"
                   step="0.01"
-                  @input="handleBreakdownValueInput(row)"
+                  @input="handleBreakdownValueInput(row, $event)"
                 />
                 <button class="tiny-danger" type="button" @click="removeBreakdownRow(index)">
                   x
@@ -1050,7 +1042,7 @@ onBeforeUnmount(() => {
                   min="0"
                   step="0.0001"
                   placeholder="17.50"
-                  @input="updateEditorExchangeRate"
+                  @input="updateEditorExchangeRate($event)"
                 />
               </label>
               <label class="pdf-total-field is-readonly">

@@ -1,5 +1,5 @@
 <script setup>
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 defineProps({
   sidebarOpen: {
@@ -16,6 +16,7 @@ import { useTheme } from "@/composables/useTheme";
 const auth = useAuthStore();
 const { theme, toggleTheme } = useTheme();
 const router = useRouter();
+const route = useRoute();
 </script>
 
 <template>
@@ -44,7 +45,7 @@ const router = useRouter();
       <div class="user-chip">
         <span class="user-label">Signed in as</span>
         <strong>{{ auth.user?.email || "admin@dev.local" }}</strong>
-        <small :class="['inventory-status', auth.inventoryUser ? 'inventory-ok' : 'inventory-warning']">
+        <small v-if="route.matched.some(record => record.meta?.requiresInventoryAuth)" :class="['inventory-status', auth.inventoryUser ? 'inventory-ok' : 'inventory-warning']">
           {{
             auth.inventoryUser
               ? `Inventory activo${auth.inventoryUser?.email ? `: ${auth.inventoryUser.email}` : ""}`
@@ -52,7 +53,7 @@ const router = useRouter();
           }}
         </small>
         <button
-          v-if="!auth.inventoryUser"
+          v-if="!auth.inventoryUser && route.matched.some(record => record.meta?.requiresInventoryAuth)"
           type="button"
           class="inventory-link"
           @click="router.push('/inventory-login?redirect=/correos-masivos')"

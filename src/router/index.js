@@ -100,6 +100,11 @@ const routes = [
         name: "AircraftFormResponses",
         component: () => import("@/views/AircraftForms/AircraftFormResponsesView.vue"),
       },
+      {
+        path: "response-templates",
+        name: "ResponseTemplates",
+        component: () => import("@/features/response-templates/views/ResponseTemplatesView.vue"),
+      },
 
       // AIRPORTS
       {
@@ -226,13 +231,14 @@ router.beforeEach(async (to) => {
   }
 
   const requiresAdmin = to.matched.some((record) => record.meta?.requiresAdmin);
+  const requiresAuth = to.matched.some((record) => record.meta?.requiresAuth);
   const requiresInventoryAuth = to.matched.some((record) => record.meta?.requiresInventoryAuth);
 
-  if (!requiresAdmin && !requiresInventoryAuth) {
+  if (!requiresAdmin && !requiresInventoryAuth && !requiresAuth) {
     return true;
   }
 
-  if (requiresAdmin) {
+  if (requiresAdmin || requiresAuth) {
     const user = await getCurrentUser();
     if (!user) {
       return {
@@ -241,7 +247,7 @@ router.beforeEach(async (to) => {
       };
     }
 
-    if (!hasAdminAccess(user)) {
+    if (requiresAdmin && !hasAdminAccess(user)) {
       return { path: "/" };
     }
   }

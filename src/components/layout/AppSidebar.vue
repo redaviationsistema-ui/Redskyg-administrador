@@ -22,6 +22,7 @@ const mainLinks = [
   { to: "/aircraft", label: "Aircraft", hint: "Fleet" },
   { to: "/lookbooks", label: "Lookbooks", hint: "Library" },
   { to: "/correos-masivos", label: "Correos masivos", hint: "Campaigns" },
+  { to: "/response-templates", label: "Plantillas de respuesta", hint: "Respuestas rápidas" },
   { to: "/airports", label: "Airports", hint: "Directory" },
   { to: "/nautical-miles", label: "Nautical Miles", hint: "Distance tools" },
   { to: "/routes", label: "Routes", hint: "Planning" },
