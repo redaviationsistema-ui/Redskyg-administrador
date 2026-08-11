@@ -21,6 +21,7 @@ const mainLinks = [
   { to: "/comercial", label: "Centro Comercial", hint: "Pipeline y ventas" },
   { to: "/aircraft", label: "Aircraft", hint: "Fleet" },
   { to: "/lookbooks", label: "Lookbooks", hint: "Library" },
+  { to: "/admin/experiencias", label: "Experiencias", hint: "Contenido web" },
   { to: "/correos-masivos", label: "Correos masivos", hint: "Campaigns" },
   { to: "/response-templates", label: "Plantillas de respuesta", hint: "Respuestas rápidas" },
   { to: "/airports", label: "Airports", hint: "Directory" },

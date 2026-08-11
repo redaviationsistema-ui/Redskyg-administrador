@@ -13,6 +13,11 @@ const routes = [
     name: "InventoryLogin",
     component: () => import("@/views/Auth/InventoryLoginView.vue"),
   },
+  {
+    path: "/landing/es-mx/experiencias",
+    name: "PublicExperiences",
+    component: () => import("@/features/experiences/public/ExperiencesLandingView.vue"),
+  },
 
   {
     path: "/",
@@ -156,6 +161,23 @@ const routes = [
         name: "LookbooksAdmin",
         component: () => import("@/views/Lookbooks/LookbooksAdminView.vue"),
         meta: { requiresAdmin: true },
+      },
+      {
+        path: "admin/experiencias",
+        name: "ExperienceGallery",
+        component: () => import("@/features/experiences/views/ExperienceGalleryView.vue"),
+        meta: { requiresAdmin: true },
+      },
+      {
+        path: "admin/experiencias/:slug",
+        name: "ExperienceVilla",
+        component: () => import("@/features/experiences/views/ExperienceVillaView.vue"),
+        meta: { requiresAdmin: true },
+        props: true,
+      },
+      {
+        path: "experiencias",
+        redirect: "/admin/experiencias",
       },
       {
         path: "comercial",
