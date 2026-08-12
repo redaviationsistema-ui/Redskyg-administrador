@@ -112,6 +112,14 @@ function formatCurrency(value) {
   }).format(toNumber(value, 0));
 }
 
+function formatCurrencyCompact(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(toNumber(value, 0));
+}
+
 function formatHours(minutes) {
   const totalMinutes = Math.round(toNumber(minutes, 0));
   const h = Math.floor(totalMinutes / 60);
@@ -433,6 +441,29 @@ function getAircraftPricingDefaults(aircraft) {
       fallbackOtherChargesUsd,
     ),
   };
+}
+
+function getAircraftOptionLabel(aircraft) {
+  if (!aircraft) return "Selecciona una aeronave";
+
+  const base = aircraft.home_base || aircraft.base || aircraft.iata || "-";
+
+  return [
+    `${aircraft.name || "Aeronave"} · ${aircraft.capacity_passengers || "-"} pax · ${base}`,
+    getAircraftCostSummary(aircraft),
+  ].join(" · ");
+}
+
+function getAircraftCostSummary(aircraft) {
+  if (!aircraft) return "";
+
+  const pricing = getAircraftPricingDefaults(aircraft);
+
+  return [
+    `Renta ${formatCurrencyCompact(getAircraftRentalRate(aircraft))}`,
+    `Pernocta ${formatCurrencyCompact(pricing.overnightFeeUsd)}`,
+    `Ops ${formatCurrencyCompact(pricing.airportFeesUsd)}`,
+  ].join(" · ");
 }
 
 function getAircraftBaseAirport(aircraftId) {
@@ -1272,7 +1303,7 @@ onMounted(async () => {
               <select v-model="routes[0].aircraft_id">
                 <option :value="null">Selecciona una aeronave</option>
                 <option v-for="aircraft in filteredFleet" :key="aircraft.id" :value="aircraft.id">
-                  {{ aircraft.name }} · {{ aircraft.capacity_passengers || "-" }} pax · {{ aircraft.home_base || aircraft.iata || "-" }}
+                  {{ getAircraftOptionLabel(aircraft) }}
                 </option>
               </select>
             </label>
@@ -1284,6 +1315,9 @@ onMounted(async () => {
               </span>
               <span v-if="selectedAircraft">
                 {{ selectedAircraft.capacity_passengers || "-" }} pax · {{ selectedAircraft.home_base || selectedAircraft.base || selectedAircraft.iata || "-" }}
+              </span>
+              <span v-if="selectedAircraft">
+                {{ getAircraftCostSummary(selectedAircraft) }}
               </span>
             </div>
           </div>

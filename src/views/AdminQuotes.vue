@@ -3,6 +3,14 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { supabase } from "@/supabase";
 import { generateFlightQuotePdf } from "@/utils/flightQuotePdf";
+import {
+  getBreakdownSubtotal as getBreakdownSubtotalFromRows,
+  recalculateQuotePricing,
+  resolveQuotePricing,
+  roundExchangeRate,
+  roundMoney,
+  syncPricingFromManualTotal,
+} from "@/utils/flightQuotePricing";
 
 const route = useRoute();
 const router = useRouter();
@@ -273,7 +281,6 @@ async function editPreviewQuote() {
 
   await loadAirportOptions();
   pdfEditor.value = buildPdfEditorState(pdfPreviewQuote.value);
-  syncTotalFromBreakdown();
   editingPdf.value = true;
 }
 
@@ -307,6 +314,8 @@ function buildPdfEditorState(quote) {
         },
       ];
 
+  const pricing = resolveQuotePricing(quote, breakdownRows);
+
   return {
     quote_number: quote.quote_number || "",
     status: quote.status || "calculated",
@@ -334,9 +343,12 @@ function buildPdfEditorState(quote) {
     overnight_cost_usd: Number(quote.overnight_cost_usd || 0),
     operational_expenses_usd: Number(quote.operational_expenses_usd || 0),
     tax_amount_usd: 0,
-    total_usd: Number(quote.total_usd || 0),
-    exchange_rate: Number(quote.exchange_rate || 0),
-    total_mxn: Number(quote.total_mxn || 0),
+    subtotal_usd: pricing.commercialSubtotalUsd,
+    commercial_margin_usd: pricing.commercialMarginUsd,
+    commercial_margin_percent: pricing.commercialMarginPercent,
+    total_usd: pricing.totalFinalUsd,
+    exchange_rate: pricing.exchangeRate,
+    total_mxn: pricing.totalFinalMxn,
     show_mxn_in_pdf: Boolean(
       quote.calculation_snapshot?.show_mxn_in_pdf ??
         quote.calculation_snapshot?.pdfTotals?.show_total_mxn ??
@@ -370,38 +382,44 @@ function syncCurrencyTotals() {
   if (!pdfEditor.value) return;
 
   const totalUsd = Number(pdfEditor.value.total_usd || 0);
-  const exchangeRate = Number(pdfEditor.value.exchange_rate || 0);
+  const exchangeRate = roundExchangeRate(pdfEditor.value.exchange_rate || 0);
+  pdfEditor.value.exchange_rate = exchangeRate;
   pdfEditor.value.total_mxn =
-    exchangeRate > 0 ? Number((totalUsd * exchangeRate).toFixed(2)) : 0;
+    exchangeRate > 0 ? roundMoney(totalUsd * exchangeRate) : 0;
 }
 
 function updateEditorTotal() {
   if (!pdfEditor.value) return;
 
-  pdfEditor.value.total_usd = Number(pdfEditor.value.total_usd || 0);
-  syncCurrencyTotals();
+  applyPricing(
+    syncPricingFromManualTotal({
+      breakdownRows: pdfEditor.value.breakdownRows,
+      totalFinalUsd: pdfEditor.value.total_usd || 0,
+      exchangeRate: pdfEditor.value.exchange_rate || 0,
+    }),
+  );
 }
 
 function updateEditorExchangeRate(event) {
   if (!pdfEditor.value) return;
 
-  pdfEditor.value.exchange_rate = Number(
+  pdfEditor.value.exchange_rate = roundExchangeRate(
     event?.target?.value ?? pdfEditor.value.exchange_rate ?? 0,
   );
-  syncTotalFromBreakdown();
+  syncCurrencyTotals();
 }
 
 function syncTotalFromBreakdown() {
   if (!pdfEditor.value) return;
 
-  const total = pdfEditor.value.breakdownRows.reduce(
-    (sum, row) => sum + Number(row.value || 0),
-    0,
+  applyPricing(
+    recalculateQuotePricing({
+      breakdownRows: pdfEditor.value.breakdownRows,
+      commercialMarginPercent: pdfEditor.value.commercial_margin_percent || 0,
+      exchangeRate: pdfEditor.value.exchange_rate || 0,
+    }),
   );
-
-  pdfEditor.value.total_usd = Number(total.toFixed(2));
   syncStandardBreakdownFields();
-  syncCurrencyTotals();
 }
 
 function handleBreakdownValueInput(row, event) {
@@ -433,8 +451,40 @@ function syncStandardBreakdownFields() {
 function getBreakdownSubtotal() {
   if (!pdfEditor.value) return 0;
 
-  return pdfEditor.value.breakdownRows
-    .reduce((sum, row) => sum + Number(row.value || 0), 0);
+  return getBreakdownSubtotalFromRows(pdfEditor.value.breakdownRows);
+}
+
+function applyPricing(pricing) {
+  if (!pdfEditor.value || !pricing) return;
+
+  pdfEditor.value.subtotal_usd = pricing.commercialSubtotalUsd;
+  pdfEditor.value.commercial_margin_usd = pricing.commercialMarginUsd;
+  pdfEditor.value.commercial_margin_percent = pricing.commercialMarginPercent;
+  pdfEditor.value.total_usd = pricing.totalFinalUsd;
+  pdfEditor.value.exchange_rate = pricing.exchangeRate;
+  pdfEditor.value.total_mxn = pricing.totalFinalMxn;
+}
+
+function updateEditorMarginPercent(event) {
+  if (!pdfEditor.value) return;
+
+  pdfEditor.value.commercial_margin_percent = Number(
+    event?.target?.value ?? pdfEditor.value.commercial_margin_percent ?? 0,
+  );
+  syncTotalFromBreakdown();
+}
+
+function toggleEditorMxnDisplay() {
+  if (!pdfEditor.value) return;
+
+  pdfEditor.value.show_mxn_in_pdf = !pdfEditor.value.show_mxn_in_pdf;
+
+  if (pdfEditor.value.show_mxn_in_pdf) {
+    syncCurrencyTotals();
+    return;
+  }
+
+  pdfEditor.value.total_mxn = 0;
 }
 
 function buildPdfCalculationSnapshot() {
@@ -458,7 +508,18 @@ function buildPdfCalculationSnapshot() {
       amount_usd: Number(leg.amount_usd || 0),
       passengers: normalizePassengerCount(pdfEditor.value.passengers ?? leg.passengers),
     })),
+    pdfPricing: {
+      commercialSubtotalUsd: Number(pdfEditor.value.subtotal_usd || 0),
+      commercialMarginUsd: Number(pdfEditor.value.commercial_margin_usd || 0),
+      commercialMarginPercent: Number(pdfEditor.value.commercial_margin_percent || 0),
+      totalFinalUsd: Number(pdfEditor.value.total_usd || 0),
+      exchangeRate: Number(pdfEditor.value.exchange_rate || 0),
+      totalFinalMxn: pdfEditor.value.show_mxn_in_pdf
+        ? Number(pdfEditor.value.total_mxn || 0)
+        : 0,
+    },
     pdfTotals: {
+      subtotal_usd: Number(pdfEditor.value.subtotal_usd || 0),
       client_flight_hours: Number(pdfEditor.value.client_flight_hours || 0),
       hourly_rate_usd: Number(pdfEditor.value.hourly_rate_usd || 0),
       flight_cost_usd: Number(pdfEditor.value.flight_cost_usd || 0),
@@ -564,19 +625,18 @@ async function savePdfEditor() {
   savingPdfEdit.value = true;
 
   try {
-    syncTotalFromBreakdown();
     const routeSummary =
       pdfEditor.value.route_summary.trim() ||
       buildRouteSummaryFromLegs(pdfEditor.value.legs);
-    const subtotalUsd = getBreakdownSubtotal();
+    const subtotalUsd = roundMoney(pdfEditor.value.subtotal_usd || getBreakdownSubtotal());
     const taxAmountUsd = 0;
-    const totalUsd = Number(pdfEditor.value.total_usd || 0);
+    const totalUsd = roundMoney(pdfEditor.value.total_usd || 0);
     if (!pdfEditor.value.show_mxn_in_pdf) {
       pdfEditor.value.total_mxn = 0;
     }
-    const exchangeRate = Number(pdfEditor.value.exchange_rate || 0);
+    const exchangeRate = roundExchangeRate(pdfEditor.value.exchange_rate || 0);
     const showTotalMxn = Boolean(pdfEditor.value.show_mxn_in_pdf);
-    const totalMxn = showTotalMxn ? Number(pdfEditor.value.total_mxn || 0) || null : null;
+    const totalMxn = showTotalMxn ? roundMoney(pdfEditor.value.total_mxn || 0) || null : null;
     const taxRate = 0;
     const billableHours = pdfEditor.value.legs.reduce(
       (sum, leg) => sum + Number(leg.billable_hours || 0),
@@ -1019,6 +1079,11 @@ onBeforeUnmount(() => {
             <div class="pdf-edit-total-copy">
               <strong>TOTAL ESTIMATED BALANCE</strong>
               <small>Estimated in USD, subject to itinerary confirmation</small>
+              <small>
+                Subtotal: {{ money(pdfEditor.subtotal_usd, "USD") }} | Margen:
+                {{ money(pdfEditor.commercial_margin_usd, "USD") }}
+                ({{ Number(pdfEditor.commercial_margin_percent || 0).toFixed(2) }}%)
+              </small>
               <small v-if="pdfEditor.show_mxn_in_pdf && Number(pdfEditor.exchange_rate || 0) > 0">
                 Total en MXN: {{ money(pdfEditor.total_mxn, "MXN") }}
               </small>
@@ -1050,11 +1115,21 @@ onBeforeUnmount(() => {
                 <input :value="money(pdfEditor.total_mxn, 'MXN')" type="text" readonly />
               </label>
             </div>
+            <label class="pdf-margin-inline-field">
+              <span>Margen comercial %</span>
+              <input
+                v-model.number="pdfEditor.commercial_margin_percent"
+                type="number"
+                min="0"
+                step="0.0001"
+                @input="updateEditorMarginPercent($event)"
+              />
+            </label>
             <button
               class="pdf-mxn-toggle"
               type="button"
               :class="{ active: pdfEditor.show_mxn_in_pdf }"
-              @click="pdfEditor.show_mxn_in_pdf = !pdfEditor.show_mxn_in_pdf"
+              @click="toggleEditorMxnDisplay"
             >
               {{ pdfEditor.show_mxn_in_pdf ? "Mostrar MXN en PDF: SI" : "Mostrar MXN en PDF: NO" }}
             </button>
@@ -1602,6 +1677,31 @@ h3 {
   color: rgba(255, 255, 255, 0.9);
 }
 
+.pdf-margin-inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.pdf-margin-inline-field span {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.8);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pdf-margin-inline-field input {
+  width: 110px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  font-size: 16px;
+  font-weight: 800;
+  text-align: right;
+}
+
 .pdf-mxn-toggle {
   border: 1px solid rgba(255, 255, 255, 0.24);
   background: rgba(255, 255, 255, 0.08);
@@ -1694,7 +1794,15 @@ h3 {
   }
 
   .pdf-edit-total-fields {
+    width: 100%;
+  }
+
+  .pdf-edit-total-fields {
     grid-template-columns: 1fr;
+  }
+
+  .pdf-margin-inline-field,
+  .pdf-margin-inline-field input {
     width: 100%;
   }
 
