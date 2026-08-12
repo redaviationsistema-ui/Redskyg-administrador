@@ -34,6 +34,7 @@ const quoteLinks = [
   { to: "/quotes", label: "Cotizaciones web" },
   { to: "/quotes/admin", label: "Cotizaciones admin de vuelo" },
   { to: "/quotes/flight/create", label: "Crear cotizacion de vuelo" },
+  { to: "/quotes/web-calculator", label: "Cotizador web" },
   { to: "/quotes/validation", label: "Cola de validacion" },
   { to: "/quotes/inventory/create", label: "Cotizaciones de inventario" },
   { to: "/quotes/aviation-parts", label: "Partes de aviacion" },

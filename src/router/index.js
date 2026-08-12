@@ -43,6 +43,11 @@ const routes = [
         component: () => import("@/views/Quotes/FlightQuoteCreateView.vue"),
       },
       {
+        path: "quotes/web-calculator",
+        name: "WebQuoteCalculator",
+        component: () => import("@/views/Quotes/WebQuoteCalculatorView.vue"),
+      },
+      {
         path: "quotes/admin",
         name: "AdminQuotes",
         component: () => import("@/views/AdminQuotes.vue"),
