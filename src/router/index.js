@@ -39,8 +39,7 @@ const routes = [
       },
       {
         path: "quotes/flight/create",
-        name: "FlightQuoteCreate",
-        component: () => import("@/views/Quotes/FlightQuoteCreateView.vue"),
+        redirect: "/quotes/admin",
       },
       {
         path: "quotes/web-calculator",
@@ -112,8 +111,7 @@ const routes = [
       },
       {
         path: "response-templates",
-        name: "ResponseTemplates",
-        component: () => import("@/features/response-templates/views/ResponseTemplatesView.vue"),
+        redirect: "/dashboard",
       },
 
       // AIRPORTS
@@ -126,8 +124,7 @@ const routes = [
       // ROUTES
       {
         path: "routes",
-        name: "Routes",
-        component: () => import("@/views/Routes/RoutesListView.vue"),
+        redirect: "/dashboard",
       },
       {
         path: "nautical-miles",
@@ -151,8 +148,7 @@ const routes = [
       // SETTINGS
       {
         path: "settings",
-        name: "Settings",
-        component: () => import("@/views/Settings/SettingsView.vue"),
+        redirect: "/dashboard",
       },
 
       // AIRCRAFT
@@ -179,6 +175,12 @@ const routes = [
         component: () => import("@/features/experiences/views/ExperienceVillaView.vue"),
         meta: { requiresAdmin: true },
         props: true,
+      },
+      {
+        path: "admin/encuestas",
+        name: "AdminEncuestas",
+        component: () => import("@/features/surveys/views/AdminEncuestasView.vue"),
+        meta: { requiresAdmin: true },
       },
       {
         path: "experiencias",

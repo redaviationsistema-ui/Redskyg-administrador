@@ -14,26 +14,22 @@ const emit = defineEmits(["close"]);
 const route = useRoute();
 const openQuotesWorkspace = ref(true);
 const openSalesFollowUp = ref(true);
-const openAircraftForms = ref(true);
 
 const mainLinks = [
-  { to: "/", label: "Dashboard", hint: "Overview" },
-  { to: "/comercial", label: "Centro Comercial", hint: "Pipeline y ventas" },
   { to: "/aircraft", label: "Aircraft", hint: "Fleet" },
-  { to: "/lookbooks", label: "Lookbooks", hint: "Library" },
-  { to: "/admin/experiencias", label: "Experiencias", hint: "Contenido web" },
-  { to: "/correos-masivos", label: "Correos masivos", hint: "Campaigns" },
-  { to: "/response-templates", label: "Plantillas de respuesta", hint: "Respuestas rápidas" },
   { to: "/airports", label: "Airports", hint: "Directory" },
+  { to: "/comercial", label: "Centro Comercial", hint: "Pipeline y ventas" },
+  { to: "/correos-masivos", label: "Correos masivos", hint: "Campaigns" },
+  { to: "/", label: "Dashboard", hint: "Overview" },
+  { to: "/admin/encuestas", label: "Encuestas", hint: "Voz del cliente" },
+  { to: "/admin/experiencias", label: "Experiencias", hint: "Contenido web" },
+  { to: "/lookbooks", label: "Lookbooks", hint: "Library" },
   { to: "/nautical-miles", label: "Nautical Miles", hint: "Distance tools" },
-  { to: "/routes", label: "Routes", hint: "Planning" },
-  { to: "/settings", label: "Settings", hint: "Configuration" },
 ];
 
 const quoteLinks = [
   { to: "/quotes", label: "Cotizaciones web" },
   { to: "/quotes/admin", label: "Cotizaciones admin de vuelo" },
-  { to: "/quotes/flight/create", label: "Crear cotizacion de vuelo" },
   { to: "/quotes/web-calculator", label: "Cotizador web" },
   { to: "/quotes/validation", label: "Cola de validacion" },
   { to: "/quotes/inventory/create", label: "Cotizaciones de inventario" },
@@ -42,7 +38,6 @@ const quoteLinks = [
 
 const quoteSectionActive = computed(() => route.path.startsWith("/quotes"));
 const salesSectionActive = computed(() => route.path === "/quotes/follow-up");
-const aircraftFormsSectionActive = computed(() => route.path.startsWith("/aircraft-forms"));
 
 </script>
 
@@ -84,6 +79,7 @@ const aircraftFormsSectionActive = computed(() => route.path.startsWith("/aircra
             class="nav-link"
             @click="emit('close')"
           >
+            <span v-if="link.badge" class="nav-badge" aria-hidden="true">{{ link.badge }}</span>
             <div class="nav-copy">
               <strong>{{ link.label }}</strong>
               <span>{{ link.hint }}</span>
@@ -141,25 +137,6 @@ const aircraftFormsSectionActive = computed(() => route.path.startsWith("/aircra
         </div>
       </div>
 
-      <div class="nav-section nav-section-quotes">
-        <button
-          class="section-toggle"
-          :class="{ active: aircraftFormsSectionActive }"
-          @click="openAircraftForms = !openAircraftForms"
-        >
-          <div class="nav-copy">
-            <strong>Forms de aviones</strong>
-            <span>Respuestas de prospectos</span>
-          </div>
-          <span class="chevron">{{ openAircraftForms ? "-" : "+" }}</span>
-        </button>
-
-        <div v-if="openAircraftForms" class="submenu">
-          <RouterLink to="/aircraft-forms/responses" class="nav-sublink" @click="emit('close')">
-            Respuestas
-          </RouterLink>
-        </div>
-      </div>
     </div>
   </aside>
 </template>
@@ -321,7 +298,8 @@ const aircraftFormsSectionActive = computed(() => route.path.startsWith("/aircra
 .section-toggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 12px;
   min-height: 52px;
   padding: 10px 14px;
   color: var(--text-main);
@@ -343,6 +321,21 @@ const aircraftFormsSectionActive = computed(() => route.path.startsWith("/aircra
   align-items: flex-start;
   gap: 3px;
   min-width: 0;
+  flex: 1;
+}
+
+.nav-badge {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(15, 95, 166, 0.12), rgba(15, 95, 166, 0.2));
+  color: var(--primary);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
 }
 
 .nav-copy strong {
