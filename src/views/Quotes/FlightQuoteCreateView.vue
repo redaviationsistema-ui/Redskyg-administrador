@@ -1242,7 +1242,23 @@ function downloadQuotePreviewPdf({ openInBrowser = false } = {}) {
     y += 7;
   });
 
-  const pdfFileName = `${savedQuote.value?.quote_number || `flight-quote-${Date.now()}`}.pdf`;
+  const routeName = String(savedQuote.value?.route_summary || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const aircraftName = String(savedQuote.value?.aircraft_name || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const pdfFileName = routeName && aircraftName
+    ? `${routeName}-${aircraftName}.pdf`
+    : `${routeName || aircraftName || savedQuote.value?.quote_number || `flight-quote-${Date.now()}`}.pdf`;
 
   if (openInBrowser) {
     const pdfUrl = URL.createObjectURL(doc.output("blob"));

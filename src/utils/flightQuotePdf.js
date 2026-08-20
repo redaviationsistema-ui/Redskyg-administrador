@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import {
   getDisplayQuoteLegs,
+  getFinalQuoteRoute,
   getDisplayRoutePath,
   getPrimaryQuoteRoute,
 } from "@/utils/quoteRouteDisplay";
@@ -118,6 +119,25 @@ function formatDocumentDate(value = new Date()) {
     .toUpperCase();
 }
 
+function formatProfileDateTime(value) {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  })
+    .format(date)
+    .replace(",", " •")
+    .toUpperCase();
+}
+
 function formatMoney(value = 0) {
   return `$${Number(value || 0).toLocaleString("en-US", {
     maximumFractionDigits: 2,
@@ -212,8 +232,10 @@ function getSavedQuoteLegs(quote) {
   return [...(quote?.flight_quote_legs || [])]
     .sort((left, right) => Number(left?.leg_order || 0) - Number(right?.leg_order || 0))
     .map((leg) => {
-      const isStartPositioning = leg?.leg_type === "positioning";
-      const isReturnToBase = leg?.leg_type === "return_to_base";
+      const legType = String(leg?.leg_type || "").toLowerCase();
+      const isStartPositioning =
+        legType === "positioning" || legType === "repositioning";
+      const isReturnToBase = legType === "return_to_base";
 
       return {
         id: leg?.id,
@@ -468,6 +490,61 @@ function drawTextPair(doc, label, value, x, y, width = 70) {
   return lines.length;
 }
 
+function drawInlineMetricsRow(doc, items, x, y, width = 70) {
+  const visibleItems = Array.isArray(items) ? items.filter((item) => item && item.label) : [];
+  if (!visibleItems.length) return 0;
+
+  const gutter = 4;
+  const columnWidth = (width - gutter * (visibleItems.length - 1)) / visibleItems.length;
+  let maxLines = 1;
+
+  visibleItems.forEach((item, index) => {
+    const columnX = x + index * (columnWidth + gutter);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(...COLORS.steel);
+    doc.text(String(item.label || "-").toUpperCase(), columnX, y);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...COLORS.ink);
+    const lines = doc.splitTextToSize(String(item.value || "-"), columnWidth);
+    doc.text(lines, columnX, y + 5.2);
+    maxLines = Math.max(maxLines, lines.length);
+  });
+
+  return maxLines;
+}
+
+function getInfoCardHeight(doc, rows, width) {
+  let height = 17;
+
+  rows.forEach((row) => {
+    if (row?.type === "inline-metrics") {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      const items = Array.isArray(row.items) ? row.items.filter((item) => item && item.label) : [];
+      const gutter = 4;
+      const columnWidth = (width - 12 - gutter * Math.max(items.length - 1, 0)) / Math.max(items.length, 1);
+      const maxLines = items.reduce((currentMax, item) => {
+        const lines = doc.splitTextToSize(String(item.value || "-"), columnWidth);
+        return Math.max(currentMax, lines.length);
+      }, 1);
+      height += 6.5 + maxLines * 3.2;
+      return;
+    }
+
+    const [, value] = row;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    const lines = doc.splitTextToSize(String(value || "-"), width - 12);
+    height += 6.5 + lines.length * 3.2;
+  });
+
+  return Math.max(42, height + 4);
+}
+
 function drawTopBand(doc) {
   doc.setFillColor(...COLORS.accent);
   doc.rect(0, 0, PAGE.width, 6, "F");
@@ -540,8 +617,16 @@ function drawInfoCard(doc, title, rows, x, y, width, height) {
   doc.text(title, x + 6, y + 8.5);
 
   let rowY = y + 17;
-  rows.forEach(([label, value]) => {
-    const usedLines = drawTextPair(doc, label, value, x + 6, rowY, width - 12);
+  rows.forEach((row) => {
+    const usedLines = row?.type === "inline-metrics"
+      ? drawInlineMetricsRow(
+          doc,
+          row.items,
+          x + 6,
+          rowY,
+          width - 12,
+        )
+      : drawTextPair(doc, row[0], row[1], x + 6, rowY, width - 12);
     rowY += 6.5 + usedLines * 3.2;
   });
 }
@@ -649,12 +734,17 @@ export async function generateFlightQuotePdf(quote) {
   const doc = new jsPDF({ compress: true });
   const customerRoutes = Array.isArray(quote?.quote_routes) ? quote.quote_routes : [];
   const routes = getPdfLegs(quote);
+  const clientRoutes = routes.filter((route) => !route?.positioning);
   const routeMetrics = await getPdfLegMetricsMap(quote, routes);
   const firstRoute = isSavedFlightQuote(quote)
     ? routes[0] || {}
     : getPrimaryQuoteRoute(quote) || {};
+  const lastRoute = isSavedFlightQuote(quote)
+    ? routes[routes.length - 1] || firstRoute
+    : getFinalQuoteRoute(quote) || firstRoute;
+  const firstClientRoute = clientRoutes[0] || firstRoute;
+  const lastClientRoute = clientRoutes[clientRoutes.length - 1] || lastRoute;
   const aircraftName = await getQuoteAircraftName(quote, firstRoute);
-  const tripType = getTripType(quote);
   const costRows = getQuoteCostRows(quote, customerRoutes);
   const total = getQuoteTotal(quote, costRows);
   const exchangeRate = Number(quote?.exchange_rate || 0);
@@ -672,15 +762,49 @@ export async function generateFlightQuotePdf(quote) {
     ["Phone", quote?.phone || quote?.client_phone || "-"],
   ];
   const passengerCount = Number(firstRoute?.passengers ?? quote?.passengers ?? 0);
+  const departureDateValue = formatProfileDateTime(
+    quote?.departure_at || firstClientRoute?.start_date,
+  );
+  const endDateValue = formatProfileDateTime(
+    quote?.return_at || lastClientRoute?.end_date,
+  );
+  const isRoundTrip =
+    clientRoutes.length > 1 &&
+    String(firstClientRoute?.from_airport || "").trim().toUpperCase() ===
+      String(lastClientRoute?.to_airport || "").trim().toUpperCase();
+  const shouldShowEndDate =
+    endDateValue !== "-" &&
+    endDateValue !== departureDateValue &&
+    clientRoutes.length > 1;
+  const timelineItems = [
+    {
+      label: "Departure Date",
+      value: departureDateValue,
+    },
+    shouldShowEndDate
+      ? {
+          label: isRoundTrip ? "Return Date" : "End Date",
+          value: endDateValue,
+        }
+      : null,
+    passengerCount > 0
+      ? {
+          label: "Passengers",
+          value: String(passengerCount),
+        }
+      : null,
+  ].filter(Boolean);
   const profileRows = [
     ["Aircraft", aircraftName],
     ["Route", getQuoteRoutePath(quote)],
-    ["Trip Type", tripType],
-    passengerCount > 0 ? ["Passengers", String(passengerCount)] : null,
+    timelineItems.length ? { type: "inline-metrics", items: timelineItems } : null,
   ].filter(Boolean);
 
   const infoCardsY = headerBottomY + 4.5;
-  const infoCardHeight = 59;
+  const infoCardHeight = Math.max(
+    getInfoCardHeight(doc, clientRows, 82),
+    getInfoCardHeight(doc, profileRows, 82),
+  );
   drawInfoCard(doc, "Client Information", clientRows, 20, infoCardsY, 82, infoCardHeight);
   drawInfoCard(doc, "Trip Profile", profileRows, 108, infoCardsY, 82, infoCardHeight);
 
@@ -693,12 +817,13 @@ export async function generateFlightQuotePdf(quote) {
   doc.roundedRect(20, y, 170, 8.5, 2, 2, "F");
   doc.setTextColor(...COLORS.navy);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.5);
+  doc.setFontSize(6.2);
   doc.text("#", 25, y + 5.6);
-  doc.text("DEPARTURE", 38, y + 5.6);
-  doc.text("ARRIVAL", 90, y + 5.6);
-  doc.text("DIST (NM)", 146, y + 5.6, { align: "center" });
-  doc.text("TIME", 176, y + 5.6, { align: "center" });
+  doc.text("TYPE", 38, y + 5.6);
+  doc.text("DEPARTURE", 60, y + 5.6);
+  doc.text("ARRIVAL", 111, y + 5.6);
+  doc.text("DIST (NM)", 157, y + 5.6, { align: "center" });
+  doc.text("TIME", 178, y + 5.6, { align: "center" });
   y += 8.5;
 
   doc.setFont("helvetica", "normal");
@@ -720,17 +845,20 @@ export async function generateFlightQuotePdf(quote) {
         route?.to_airport,
         route?.to_airport_name,
       );
-      const fromName = doc.splitTextToSize(departureAirport.name, 44);
+      const typeLabel = route?.positioning
+        ? route?.positioningLabel || "Repositioning"
+        : "Client leg";
+      const fromName = doc.splitTextToSize(departureAirport.name, 42);
       const fromDetail = departureAirport.detail
-        ? doc.splitTextToSize(departureAirport.detail, 44)
+        ? doc.splitTextToSize(departureAirport.detail, 42)
         : [];
-      const toName = doc.splitTextToSize(arrivalAirport.name, 44);
+      const toName = doc.splitTextToSize(arrivalAirport.name, 40);
       const toDetail = arrivalAirport.detail
-        ? doc.splitTextToSize(arrivalAirport.detail, 44)
+        ? doc.splitTextToSize(arrivalAirport.detail, 40)
         : [];
       const metrics = routeMetrics[getLegMetricKey(route, index)] || {};
       const rowLineHeight = 2.7;
-      const fromLineCount = fromName.length + fromDetail.length + (route?.positioning ? 1 : 0);
+      const fromLineCount = fromName.length + fromDetail.length;
       const toLineCount = toName.length + toDetail.length;
       const rowHeight = Math.max(9, Math.max(fromLineCount, toLineCount) * rowLineHeight + 3);
 
@@ -739,32 +867,39 @@ export async function generateFlightQuotePdf(quote) {
         doc.rect(20, y, 170, rowHeight, "F");
       }
 
+      if (route?.positioning) {
+        doc.setFillColor(254, 243, 199);
+        doc.rect(33, y + 1.6, 20, rowHeight - 3.2, "F");
+      }
+
       doc.setFontSize(5.25);
       doc.text(String(index + 1), 25, y + 4.6);
       doc.setFont("helvetica", "bold");
+      doc.setFontSize(4.7);
+      doc.setTextColor(...(route?.positioning ? [154, 52, 18] : COLORS.steel));
+      doc.text(doc.splitTextToSize(typeLabel.toUpperCase(), 18), 43, y + rowHeight / 2, {
+        align: "center",
+        baseline: "middle",
+        lineHeightFactor: 0.95,
+      });
+      doc.setFont("helvetica", "bold");
       doc.setFontSize(6);
-      doc.text(fromName, 38, y + 4.2, { lineHeightFactor: 0.95 });
-      doc.text(toName, 90, y + 4.2, { lineHeightFactor: 0.95 });
+      doc.setTextColor(...COLORS.ink);
+      doc.text(fromName, 60, y + 4.2, { lineHeightFactor: 0.95 });
+      doc.text(toName, 111, y + 4.2, { lineHeightFactor: 0.95 });
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(5.1);
       doc.setTextColor(...COLORS.steel);
       const fromDetailY = y + 4.2 + fromName.length * rowLineHeight;
       const toDetailY = y + 4.2 + toName.length * rowLineHeight;
-      if (fromDetail.length) doc.text(fromDetail, 38, fromDetailY, { lineHeightFactor: 0.95 });
-      if (toDetail.length) doc.text(toDetail, 90, toDetailY, { lineHeightFactor: 0.95 });
-      if (route?.positioning) {
-        doc.text(
-          route?.positioningLabel || "Positioning",
-          38,
-          fromDetailY + Math.max(fromDetail.length, 1) * rowLineHeight,
-        );
-      }
+      if (fromDetail.length) doc.text(fromDetail, 60, fromDetailY, { lineHeightFactor: 0.95 });
+      if (toDetail.length) doc.text(toDetail, 111, toDetailY, { lineHeightFactor: 0.95 });
 
       doc.setTextColor(...COLORS.ink);
       doc.setFontSize(5.5);
-      doc.text(formatPdfDistance(metrics.distanceLabel), 146, y + rowHeight / 2 + 1, { align: "center" });
-      doc.text(formatPdfTime(metrics.durationLabel), 176, y + rowHeight / 2 + 1, { align: "center" });
+      doc.text(formatPdfDistance(metrics.distanceLabel), 157, y + rowHeight / 2 + 1, { align: "center" });
+      doc.text(formatPdfTime(metrics.durationLabel), 178, y + rowHeight / 2 + 1, { align: "center" });
 
       doc.setDrawColor(...COLORS.line);
       doc.line(20, y + rowHeight, 190, y + rowHeight);

@@ -20,7 +20,20 @@ body {
 
 :root {
   color-scheme: light;
-  --font-sans: "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-sans:
+    "Segoe UI",
+    "Inter",
+    "Noto Sans",
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  --font-serif:
+    "Iowan Old Style",
+    "Palatino Linotype",
+    "Book Antiqua",
+    Georgia,
+    "Times New Roman",
+    serif;
   --bg-main:
     radial-gradient(circle at top left, rgba(11, 92, 171, 0.12), transparent 28%),
     linear-gradient(180deg, #f5f8fc 0%, #edf2f8 100%);
@@ -88,6 +101,10 @@ body {
   font-family: var(--font-sans);
   line-height: 1.5;
   text-rendering: optimizeLegibility;
+  font-kerning: normal;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #app {

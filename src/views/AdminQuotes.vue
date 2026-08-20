@@ -185,8 +185,19 @@ function getQuotePdfFileName(quote) {
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+  const aircraftName = String(quote?.aircraft_name || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 
-  return `${routeName || quote?.quote_number || "flight-quote"}.pdf`;
+  if (routeName && aircraftName) {
+    return `${routeName}-${aircraftName}.pdf`;
+  }
+
+  return `${routeName || aircraftName || quote?.quote_number || "flight-quote"}.pdf`;
 }
 
 function updatePreviewNameFromEditor() {
@@ -195,6 +206,7 @@ function updatePreviewNameFromEditor() {
   pdfPreviewName.value = getQuotePdfFileName({
     ...pdfPreviewQuote.value,
     route_summary: pdfEditor.value.route_summary,
+    aircraft_name: pdfEditor.value.aircraft_name,
   });
 }
 

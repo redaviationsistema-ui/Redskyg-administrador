@@ -110,9 +110,26 @@ const existingReservation = ref(null);
 const pdfFileName = computed(() => {
   const origin = sanitizeFileSegment(firstRoute.value?.from_airport);
   const destination = sanitizeFileSegment(lastRoute.value?.to_airport);
+  const aircraft = sanitizeFileSegment(
+    resolvedAircraftName.value !== EMPTY_VALUE
+      ? resolvedAircraftName.value
+      : props.quote?.aircraft_name,
+  );
+
+  if (origin && destination && aircraft) {
+    return `${origin}-${destination}-${aircraft}.pdf`;
+  }
 
   if (origin && destination) {
     return `${origin}-${destination}.pdf`;
+  }
+
+  if (origin && aircraft) {
+    return `${origin}-${aircraft}.pdf`;
+  }
+
+  if (destination && aircraft) {
+    return `${destination}-${aircraft}.pdf`;
   }
 
   if (origin) {
@@ -665,6 +682,7 @@ watch(
           <div class="table-shell">
             <div class="table-head">
               <span>#</span>
+              <span>TIPO</span>
               <span>DEPARTURE</span>
               <span>ARRIVAL</span>
               <span>DIST (NM)</span>
@@ -677,13 +695,20 @@ watch(
               class="table-row"
               :class="{ 'table-row-positioning': route.positioning }"
             >
-              <span>{{ index + 1 }}</span>
+              <span class="leg-index-cell">
+                <strong>{{ index + 1 }}</strong>
+              </span>
+              <span class="type-cell">
+                <small
+                  class="type-chip"
+                  :class="route.positioning ? 'type-chip-positioning' : 'type-chip-client'"
+                >
+                  {{ route.positioning ? route.positioningLabel : "Tramo cliente" }}
+                </small>
+              </span>
               <span class="airport-cell">
                 <strong>{{ getAirportDisplay(route.from_airport, route.from_airport_name).name }}</strong>
                 <small>{{ getAirportDisplay(route.from_airport, route.from_airport_name).detail }}</small>
-                <small v-if="route.positioning" class="positioning-chip">
-                  {{ route.positioningLabel }}
-                </small>
               </span>
               <span class="airport-cell">
                 <strong>{{ getAirportDisplay(route.to_airport, route.to_airport_name).name }}</strong>
@@ -1000,10 +1025,10 @@ watch(
 .table-head,
 .table-row {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr) 88px 72px;
+  grid-template-columns: 36px 150px minmax(0, 1fr) minmax(0, 1fr) 88px 72px;
   gap: 0.35rem;
   align-items: center;
-  min-width: 650px;
+  min-width: 800px;
   padding: 0.55rem 0.6rem;
   font-size: 0.84rem;
 }
@@ -1018,6 +1043,45 @@ watch(
 
 .table-row {
   border-bottom: 1px solid var(--line);
+  min-height: 56px;
+}
+
+.leg-index-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  font-weight: 700;
+}
+
+.type-cell {
+  display: flex;
+  align-items: center;
+}
+
+.type-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  padding: 0.24rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.type-chip-client {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.type-chip-positioning {
+  background: #fef3c7;
+  color: #9a3412;
 }
 
 .airport-cell {
@@ -1041,8 +1105,8 @@ watch(
 }
 
 .metric-cell,
-.table-head span:nth-child(4),
-.table-head span:nth-child(5) {
+.table-head span:nth-child(5),
+.table-head span:nth-child(6) {
   text-align: center;
 }
 
@@ -1051,19 +1115,7 @@ watch(
 }
 
 .table-row-positioning {
-  background: rgba(18, 52, 86, 0.06);
-}
-
-.positioning-chip {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 0.45rem;
-  padding: 0.12rem 0.42rem;
-  border-radius: 999px;
-  background: rgba(18, 52, 86, 0.12);
-  color: var(--accent);
-  font-size: 0.68rem;
-  font-weight: 700;
+  background: rgba(251, 191, 36, 0.13);
 }
 
 .table-empty {
