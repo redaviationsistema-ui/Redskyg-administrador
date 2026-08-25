@@ -21,6 +21,7 @@ const pdfPreviewUrl = ref("");
 const pdfPreviewName = ref("");
 const pdfPreviewQuote = ref(null);
 const generatingPdfId = ref(null);
+const downloadingPdfVariant = ref("");
 const editingPdf = ref(false);
 const savingPdfEdit = ref(false);
 const pdfEditor = ref(null);
@@ -770,15 +771,24 @@ async function savePdfEditor() {
   }
 }
 
-function downloadPreviewPdf() {
-  if (!pdfPreviewUrl.value) return;
+async function downloadPreviewPdf(includeContract = true) {
+  if (!pdfPreviewQuote.value || downloadingPdfVariant.value) return;
 
-  const link = document.createElement("a");
-  link.href = pdfPreviewUrl.value;
-  link.download = pdfPreviewName.value || "flight-quote.pdf";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  downloadingPdfVariant.value = includeContract ? "contract" : "quote-only";
+
+  try {
+    const doc = await generateFlightQuotePdf(pdfPreviewQuote.value, { includeContract });
+    const blobUrl = URL.createObjectURL(doc.output("blob"));
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = pdfPreviewName.value || "flight-quote.pdf";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+  } finally {
+    downloadingPdfVariant.value = "";
+  }
 }
 
 function printPreviewPdf() {
@@ -949,8 +959,21 @@ onBeforeUnmount(() => {
             <button class="pdf-action-btn edit-action" type="button" @click="editPreviewQuote">
               Editar
             </button>
-            <button class="pdf-action-btn download-action" type="button" @click="downloadPreviewPdf">
-              Descargar
+            <button
+              class="pdf-action-btn download-action"
+              type="button"
+              :disabled="Boolean(downloadingPdfVariant)"
+              @click="downloadPreviewPdf(true)"
+            >
+              {{ downloadingPdfVariant === "contract" ? "Generando..." : "Contempla contrato" }}
+            </button>
+            <button
+              class="pdf-action-btn download-secondary-action"
+              type="button"
+              :disabled="Boolean(downloadingPdfVariant)"
+              @click="downloadPreviewPdf(false)"
+            >
+              {{ downloadingPdfVariant === "quote-only" ? "Generando..." : "Sin contrato" }}
             </button>
             <button class="pdf-action-btn print-action" type="button" @click="printPreviewPdf">
               Imprimir
@@ -1423,9 +1446,19 @@ h3 {
   padding: 0.65rem 0.9rem;
 }
 
+.pdf-action-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
 .download-action {
   background: rgba(15, 95, 166, 0.1);
   color: #0f5fa6;
+}
+
+.download-secondary-action {
+  background: rgba(15, 23, 42, 0.08);
+  color: #1e293b;
 }
 
 .edit-action {
