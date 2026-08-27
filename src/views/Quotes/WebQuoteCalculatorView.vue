@@ -1070,6 +1070,27 @@ function buildFlightQuotePayload(userId = null) {
     throw new Error("Selecciona una aeronave antes de guardar.");
   }
 
+  const formatLocalDateTime = (value) => {
+    if (!value) return null;
+
+    const normalized = String(value).trim();
+    const match = normalized.match(
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/,
+    );
+
+    if (match) {
+      const [, year, month, day, hours, minutes, seconds = "00"] = match;
+      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    }
+
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const pad = (part) => String(part).padStart(2, "0");
+
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  };
+
   return {
     quote_number: generateQuoteNumber(),
     status: "calculated",
@@ -1090,14 +1111,11 @@ function buildFlightQuotePayload(userId = null) {
       null,
     aircraft_capacity: aircraft.capacity_passengers || null,
     aircraft_base: aircraft.home_base || aircraft.base || aircraft.iata || null,
-    departure_at: validRoutes.value[0]?.start_date
-      ? new Date(validRoutes.value[0].start_date).toISOString()
-      : null,
-    return_at: validRoutes.value[validRoutes.value.length - 1]?.end_date
-      ? new Date(validRoutes.value[validRoutes.value.length - 1].end_date).toISOString()
-      : validRoutes.value[validRoutes.value.length - 1]?.start_date
-        ? new Date(validRoutes.value[validRoutes.value.length - 1].start_date).toISOString()
-        : null,
+    departure_at: formatLocalDateTime(validRoutes.value[0]?.start_date),
+    return_at: formatLocalDateTime(
+      validRoutes.value[validRoutes.value.length - 1]?.end_date ||
+        validRoutes.value[validRoutes.value.length - 1]?.start_date,
+    ),
     passengers: Number(validRoutes.value[0]?.passengers || 1),
     route_summary: routeSummary.value,
     total_distance_nm: Number(pricingSummary.value.totals.miles.toFixed(2)),

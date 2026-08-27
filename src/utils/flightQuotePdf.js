@@ -1001,7 +1001,8 @@ function drawCompactQuoteHeader(doc, logo, quote, { includeContract = true } = {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...COLORS.ink);
-  doc.text(`Reservation • ${formatDocumentDate(quote?.created_at || new Date())}`, 190, headerY + 14, {
+  const reservationDate = quote?.departure_at || quote?.created_at || new Date();
+  doc.text(`Reservation • ${formatDocumentDate(reservationDate)}`, 190, headerY + 14, {
     align: "right",
   });
 

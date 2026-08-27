@@ -33,6 +33,44 @@ function normalizePassengerCount(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function toIsoOrNull(value) {
+  if (!value) return null;
+
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+
+  const match = normalized.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/,
+  );
+
+  if (match) {
+    const [, year, month, day, hours, minutes, seconds = "00"] = match;
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+  }
+
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const pad = (part) => String(part).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function toDateTimeLocalInput(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const pad = (part) => String(part).padStart(2, "0");
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join("-") + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function formatDateTime(date) {
   if (!date) return "-";
 
@@ -343,8 +381,8 @@ function buildPdfEditorState(quote) {
     aircraft_tail: quote.aircraft_tail || null,
     aircraft_capacity: quote.aircraft_capacity || null,
     aircraft_base: quote.aircraft_base || null,
-    departure_at: quote.departure_at || null,
-    return_at: quote.return_at || null,
+    departure_at: toDateTimeLocalInput(quote.departure_at),
+    return_at: toDateTimeLocalInput(quote.return_at),
     route_summary: quote.route_summary || "",
     operation_type: quote.operation_type || "national",
     passengers: normalizePassengerCount(quote.passengers) ?? "",
@@ -674,8 +712,8 @@ async function savePdfEditor() {
       aircraft_tail: pdfEditor.value.aircraft_tail || null,
       aircraft_capacity: pdfEditor.value.aircraft_capacity || null,
       aircraft_base: pdfEditor.value.aircraft_base || null,
-      departure_at: pdfEditor.value.departure_at || null,
-      return_at: pdfEditor.value.return_at || null,
+      departure_at: toIsoOrNull(pdfEditor.value.departure_at),
+      return_at: toIsoOrNull(pdfEditor.value.return_at),
       route_summary: routeSummary,
       operation_type: pdfEditor.value.operation_type,
       passengers: normalizePassengerCount(pdfEditor.value.passengers),
@@ -1004,6 +1042,10 @@ onBeforeUnmount(() => {
               <input v-model="pdfEditor.aircraft_name" />
               <label>ROUTE</label>
               <input v-model="pdfEditor.route_summary" @input="updatePreviewNameFromEditor" />
+              <label>DEPARTURE DATE</label>
+              <input v-model="pdfEditor.departure_at" type="datetime-local" />
+              <label>RETURN DATE</label>
+              <input v-model="pdfEditor.return_at" type="datetime-local" />
               <label>TRIP TYPE</label>
               <select v-model="pdfEditor.operation_type">
                 <option value="national">National Charter</option>
