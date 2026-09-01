@@ -133,7 +133,10 @@ function drawDualInfoBox(doc, title, leftLines, rightLines, x, y, width, height)
 }
 
 function formatMoney(value) {
-  return `$${Number(value || 0).toLocaleString("en-US")}`;
+  return `$${Number(value || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatLabeledValue(label, value) {
@@ -226,7 +229,7 @@ function buildV2EmailBody() {
   return [
     `Estimado/a ${contact},`,
     "",
-    `Compartimos nuevamente la cotizacion ${quoteNumber} en formato PDF para su referencia.`,
+    `Adjuntamos la cotización actualizada ${quoteNumber} en formato PDF para su referencia.`,
     "Quedamos atentos a cualquier comentario o informacion adicional que requiera.",
     "",
     "Saludos cordiales,",
@@ -268,7 +271,7 @@ const sendEmail = async () => {
     formData.append("client_name", client_contact || "Cliente");
     formData.append(
       "subject",
-      customEmailSubject || `Quotation ${quote_number || ""}`,
+      customEmailSubject || `Cotización actualizada ${quote_number || ""}`,
     );
     formData.append("body", buildV2EmailBody());
 
@@ -716,12 +719,12 @@ CERT TYPE: ${item.cert_type ?? item.certType ?? "CofC"}`,
       columnStyles: {
         0: { cellWidth: 10 },
         1: { cellWidth: 80 },
-        2: { cellWidth: 10 },
+        2: { cellWidth: 26, fontSize: 8, halign: "center" },
         3: { cellWidth: 10 },
         4: { cellWidth: 10 },
-        5: { cellWidth: 18 },
-        6: { cellWidth: 26, halign: "right" },
-        7: { cellWidth: 26, halign: "right" },
+        5: { cellWidth: 14 },
+        6: { cellWidth: 20, halign: "right" },
+        7: { cellWidth: 20, halign: "right" },
       },
 
       head: [

@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { supabase } from "@/supabase";
 import { generateFlightQuotePdf } from "@/utils/flightQuotePdf";
+import { generateCargoQuotePdf, getCargoQuotePdfFileName } from "@/utils/cargoQuotePdf";
 import {
   getBreakdownSubtotal as getBreakdownSubtotalFromRows,
   recalculateQuotePricing,
@@ -20,6 +21,7 @@ const selectedQuote = ref(null);
 const pdfPreviewUrl = ref("");
 const pdfPreviewName = ref("");
 const pdfPreviewQuote = ref(null);
+const isCargoPdfPreview = ref(false);
 const generatingPdfId = ref(null);
 const downloadingPdfVariant = ref("");
 const editingPdf = ref(false);
@@ -309,6 +311,27 @@ async function generateQuotePdf(quote) {
 
     pdfPreviewName.value = getQuotePdfFileName(quote);
     pdfPreviewQuote.value = quote;
+    isCargoPdfPreview.value = false;
+    pdfPreviewUrl.value = URL.createObjectURL(pdfBlob);
+  } finally {
+    generatingPdfId.value = null;
+  }
+}
+
+async function generateCargoPdf(quote) {
+  generatingPdfId.value = quote.id;
+
+  try {
+    const doc = await generateCargoQuotePdf(quote);
+    const pdfBlob = doc.output("blob");
+
+    if (pdfPreviewUrl.value) {
+      URL.revokeObjectURL(pdfPreviewUrl.value);
+    }
+
+    pdfPreviewName.value = getCargoQuotePdfFileName(quote);
+    pdfPreviewQuote.value = quote;
+    isCargoPdfPreview.value = true;
     pdfPreviewUrl.value = URL.createObjectURL(pdfBlob);
   } finally {
     generatingPdfId.value = null;
@@ -323,6 +346,7 @@ function closePdfPreview() {
   pdfPreviewUrl.value = "";
   pdfPreviewName.value = "";
   pdfPreviewQuote.value = null;
+  isCargoPdfPreview.value = false;
   editingPdf.value = false;
   pdfEditor.value = null;
 }
@@ -815,7 +839,9 @@ async function downloadPreviewPdf(includeContract = true) {
   downloadingPdfVariant.value = includeContract ? "contract" : "quote-only";
 
   try {
-    const doc = await generateFlightQuotePdf(pdfPreviewQuote.value, { includeContract });
+    const doc = isCargoPdfPreview.value
+      ? await generateCargoQuotePdf(pdfPreviewQuote.value)
+      : await generateFlightQuotePdf(pdfPreviewQuote.value, { includeContract });
     const blobUrl = URL.createObjectURL(doc.output("blob"));
     const link = document.createElement("a");
     link.href = blobUrl;
@@ -977,6 +1003,14 @@ onBeforeUnmount(() => {
               >
                 {{ generatingPdfId === quote.id ? "..." : "PDF" }}
               </button>
+              <button
+                class="cargo-pdf-btn"
+                type="button"
+                :disabled="generatingPdfId === quote.id"
+                @click="generateCargoPdf(quote)"
+              >
+                {{ generatingPdfId === quote.id ? "..." : "PDF CARGA" }}
+              </button>
               <button class="delete-btn" type="button" @click="deleteQuote(quote.id)">
                 Eliminar
               </button>
@@ -994,10 +1028,25 @@ onBeforeUnmount(() => {
             <h2>{{ pdfPreviewName }}</h2>
           </div>
           <div class="pdf-preview-actions">
-            <button class="pdf-action-btn edit-action" type="button" @click="editPreviewQuote">
+            <button
+              v-if="!isCargoPdfPreview"
+              class="pdf-action-btn edit-action"
+              type="button"
+              @click="editPreviewQuote"
+            >
               Editar
             </button>
             <button
+              v-if="isCargoPdfPreview"
+              class="pdf-action-btn download-action"
+              type="button"
+              :disabled="Boolean(downloadingPdfVariant)"
+              @click="downloadPreviewPdf(false)"
+            >
+              {{ downloadingPdfVariant ? "Generando..." : "Descargar PDF" }}
+            </button>
+            <button
+              v-if="!isCargoPdfPreview"
               class="pdf-action-btn download-action"
               type="button"
               :disabled="Boolean(downloadingPdfVariant)"
@@ -1006,6 +1055,7 @@ onBeforeUnmount(() => {
               {{ downloadingPdfVariant === "contract" ? "Generando..." : "Contempla contrato" }}
             </button>
             <button
+              v-if="!isCargoPdfPreview"
               class="pdf-action-btn download-secondary-action"
               type="button"
               :disabled="Boolean(downloadingPdfVariant)"
@@ -1401,10 +1451,12 @@ h3 {
 .actions {
   display: flex;
   gap: 0.45rem;
+  flex-wrap: nowrap;
 }
 
 .view-btn,
 .pdf-btn,
+.cargo-pdf-btn,
 .delete-btn,
 .close-btn,
 .pdf-action-btn {
@@ -1427,6 +1479,27 @@ h3 {
 }
 
 .pdf-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.cargo-pdf-btn {
+  padding: 0.25rem 0.4rem;
+  background: #f5ede1;
+  color: #a66a0b;
+  font-size: 0.72rem;
+}
+
+.cargo-pdf-btn:not(:disabled) {
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.cargo-pdf-btn:not(:disabled):hover {
+  background: #efe1cf;
+  transform: translateY(-2px);
+}
+
+.cargo-pdf-btn:disabled {
   opacity: 0.65;
   cursor: wait;
 }
