@@ -10,6 +10,7 @@ import {
   getPreferredAircraftName,
   resolveAircraftDisplayName,
 } from "@/utils/aircraftDisplay";
+import { buildQuoteCommercialBreakdownPresentation } from "@/utils/flightQuotePricing";
 
 const PAGE = {
   width: 210,
@@ -614,71 +615,6 @@ function getTripType(quote) {
   return quote?.operation_type === "international"
     ? "International Charter"
     : "National Charter";
-}
-
-function getQuoteCostRows(quote, customerRoutes) {
-  const customRows = quote?.calculation_snapshot?.pdfBreakdownRows;
-
-  if (Array.isArray(customRows) && customRows.length) {
-    const filteredRows = customRows
-      .filter((row) => String(row?.label || "").trim())
-      .map((row) => [String(row.label).trim(), Number(row.value || 0)]);
-
-    if (filteredRows.length) {
-      const hasLabel = (pattern) =>
-        filteredRows.some(([label]) => pattern.test(String(label || "")));
-
-      const normalizedRows = [...filteredRows];
-
-      if (!hasLabel(/flight\s*cost/i) && Number(quote?.flight_cost_usd || 0) > 0) {
-        normalizedRows.unshift(["Flight Cost", Number(quote.flight_cost_usd || 0)]);
-      }
-
-      if (!hasLabel(/overnight/i) && Number(quote?.overnight_cost_usd || 0) > 0) {
-        normalizedRows.push(["Overnight Crew", Number(quote.overnight_cost_usd || 0)]);
-      }
-
-      if (!hasLabel(/operational/i) && Number(quote?.operational_expenses_usd || 0) > 0) {
-        normalizedRows.push([
-          "Operational Expenses",
-          Number(quote.operational_expenses_usd || 0),
-        ]);
-      }
-
-      return normalizedRows;
-    }
-  }
-
-  if (isSavedFlightQuote(quote)) {
-    return [
-      ["Flight Cost", Number(quote?.flight_cost_usd || 0)],
-      ["Overnight Crew", Number(quote?.overnight_cost_usd || 0)],
-      ["Operational Expenses", Number(quote?.operational_expenses_usd || 0)],
-      ["Tax (16%)", Number(quote?.tax_amount_usd || 0)],
-    ];
-  }
-
-  const flightCost = customerRoutes.reduce(
-    (sum, item) => sum + (Number(item?.estimated_price) || 0),
-    0,
-  );
-  const total = Number(quote?.total_estimated_price ?? flightCost) || 0;
-  const operationalExpenses = Math.max(total - flightCost, 0);
-
-  return [
-    ["Flight Cost", flightCost],
-    ["Overnight Crew", 0],
-    ["Operational Expenses", operationalExpenses],
-  ];
-}
-
-function getQuoteTotal(quote, costRows) {
-  if (isSavedFlightQuote(quote)) return Number(quote?.total_usd || 0);
-
-  return (
-    Number(quote?.total_estimated_price) ||
-    costRows.reduce((sum, [, value]) => sum + Number(value || 0), 0)
-  );
 }
 
 function drawTextPair(doc, label, value, x, y, width = 70) {
@@ -1381,8 +1317,12 @@ export async function generateFlightQuotePdf(quote, options = {}) {
   const firstClientRoute = clientRoutes[0] || firstRoute;
   const lastClientRoute = clientRoutes[clientRoutes.length - 1] || lastRoute;
   const aircraftName = await getQuoteAircraftName(quote, firstRoute);
-  const costRows = getQuoteCostRows(quote, customerRoutes);
-  const total = getQuoteTotal(quote, costRows);
+  const commercialPresentation = buildQuoteCommercialBreakdownPresentation(
+    quote,
+    customerRoutes,
+  );
+  const costRows = commercialPresentation.displayRows;
+  const total = commercialPresentation.displayTotal;
   const exchangeRate = Number(quote?.exchange_rate || 0);
   const totalMxn =
     Number(quote?.total_mxn || 0) || (exchangeRate > 0 ? Number((total * exchangeRate).toFixed(2)) : 0);
@@ -1574,16 +1514,16 @@ export async function generateFlightQuotePdf(quote, options = {}) {
   doc.setFontSize(7.6);
   doc.setTextColor(...COLORS.ink);
 
-  costRows.forEach(([label, value], index) => {
+  costRows.forEach((row, index) => {
     if (index % 2 === 1) {
       doc.setFillColor(...COLORS.white);
       doc.rect(24, rowY - 4.1, 162, 5.8, "F");
     }
 
     doc.setFont("helvetica", "normal");
-    doc.text(label, 29, rowY);
+    doc.text(row.label, 29, rowY);
     doc.setFont("helvetica", "bold");
-    doc.text(formatMoney(value), 180, rowY, { align: "right" });
+    doc.text(formatMoney(row.displayValue), 180, rowY, { align: "right" });
     rowY += 5.8;
   });
 

@@ -13,6 +13,7 @@ import {
   getPrimaryQuoteRoute,
 } from "@/utils/quoteRouteDisplay";
 import { getLegMetricKey, getQuoteLegMetricsMap } from "@/utils/quoteLegMetrics";
+import { buildQuoteCommercialBreakdownPresentation } from "@/utils/flightQuotePricing";
 import { useFeedback } from "@/composables/useFeedback";
 
 const props = defineProps({
@@ -143,28 +144,10 @@ const pdfFileName = computed(() => {
   return `${String(props.quote?.id || "VUELO").toUpperCase()}.pdf`;
 });
 
-const flightCost = computed(() =>
-  customerRoutes.value.reduce(
-    (total, route) => total + (Number(route.estimated_price ?? route.amount_usd) || 0),
-    0,
-  ),
+const commercialPresentation = computed(() =>
+  buildQuoteCommercialBreakdownPresentation(props.quote, customerRoutes.value),
 );
-
-const totalPrice = computed(() => {
-  if (props.quote?.total_usd != null) {
-    return Number(props.quote.total_usd) || 0;
-  }
-
-  if (props.quote?.total_estimated_price != null) {
-    return Number(props.quote.total_estimated_price) || 0;
-  }
-
-  return flightCost.value;
-});
-
-const operationalExpenses = computed(() =>
-  Math.max(totalPrice.value - flightCost.value, 0),
-);
+const totalPrice = computed(() => commercialPresentation.value.displayTotal);
 
 const tripType = computed(() => props.quote?.flight_type || "Private Charter");
 
@@ -184,10 +167,6 @@ const profileRows = computed(() => {
     passengerCount > 0 ? ["PASSENGERS", passengerCount] : null,
   ].filter(Boolean);
 });
-
-const overnightCrewNights = computed(() =>
-  getNightsBetween(firstRoute.value?.start_date, lastRoute.value?.end_date),
-);
 
 const reservationAircraftId = computed(
   () =>
@@ -271,15 +250,7 @@ const canSaveReservation = computed(
     ),
 );
 
-const costRows = computed(() => [
-  { label: "Flight Cost", value: flightCost.value, type: "currency" },
-  { label: "Overnight Crew", value: overnightCrewNights.value, type: "nights" },
-  {
-    label: "Operational Expenses",
-    value: operationalExpenses.value,
-    type: "currency",
-  },
-]);
+const costRows = computed(() => commercialPresentation.value.displayRows);
 
 function getAircraftName(route) {
   return getPreferredAircraftName(
@@ -389,12 +360,7 @@ function sanitizeFileSegment(value) {
 }
 
 function formatCostValue(row) {
-  if (row.type === "nights") {
-    const nights = Number(row.value || 0);
-    return `${nights} ${nights === 1 ? "night" : "nights"}`;
-  }
-
-  return `$${formatCurrency(row.value)}`;
+  return `$${formatCurrency(row.displayValue)}`;
 }
 
 function getNightsBetween(startValue, endValue) {

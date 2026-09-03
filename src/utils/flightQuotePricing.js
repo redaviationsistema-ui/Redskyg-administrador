@@ -3,6 +3,14 @@ function toNumber(value) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
+function toCents(value) {
+  return Math.round(roundMoney(value) * 100);
+}
+
+function fromCents(value) {
+  return Number((Number(value || 0) / 100).toFixed(2));
+}
+
 export function roundMoney(value) {
   return Number(toNumber(value).toFixed(2));
 }
@@ -13,6 +21,147 @@ export function roundExchangeRate(value) {
 
 export function getBreakdownSubtotal(rows = []) {
   return roundMoney(rows.reduce((sum, row) => sum + toNumber(row?.value), 0));
+}
+
+export function isTaxBreakdownLabel(label) {
+  return /tax|iva|impuesto/i.test(String(label || ""));
+}
+
+export function getOriginalCommercialBreakdownRows(quote, customerRoutes = []) {
+  const customRows = quote?.calculation_snapshot?.pdfBreakdownRows;
+
+  if (Array.isArray(customRows) && customRows.length) {
+    const filteredRows = customRows
+      .filter((row) => String(row?.label || "").trim() && !isTaxBreakdownLabel(row?.label))
+      .map((row) => ({
+        label: String(row.label || "Concept").trim(),
+        value: roundMoney(row.value || 0),
+      }));
+
+    if (filteredRows.length) {
+      const hasLabel = (pattern) =>
+        filteredRows.some((row) => pattern.test(String(row.label || "")));
+
+      const normalizedRows = [...filteredRows];
+
+      if (!hasLabel(/flight\s*cost/i) && Number(quote?.flight_cost_usd || 0) > 0) {
+        normalizedRows.unshift({
+          label: "Flight Cost",
+          value: roundMoney(quote.flight_cost_usd || 0),
+        });
+      }
+
+      if (!hasLabel(/overnight/i) && Number(quote?.overnight_cost_usd || 0) > 0) {
+        normalizedRows.push({
+          label: "Overnight Crew",
+          value: roundMoney(quote.overnight_cost_usd || 0),
+        });
+      }
+
+      if (
+        !hasLabel(/operational/i) &&
+        Number(quote?.operational_expenses_usd || 0) > 0
+      ) {
+        normalizedRows.push({
+          label: "Operational Expenses",
+          value: roundMoney(quote.operational_expenses_usd || 0),
+        });
+      }
+
+      return normalizedRows;
+    }
+  }
+
+  if (quote?.id || quote?.flight_cost_usd != null) {
+    return [
+      { label: "Flight Cost", value: roundMoney(quote?.flight_cost_usd || 0) },
+      { label: "Overnight Crew", value: roundMoney(quote?.overnight_cost_usd || 0) },
+      {
+        label: "Operational Expenses",
+        value: roundMoney(quote?.operational_expenses_usd || 0),
+      },
+    ];
+  }
+
+  const flightCost = customerRoutes.reduce(
+    (sum, item) => sum + (Number(item?.estimated_price) || 0),
+    0,
+  );
+  const total = Number(quote?.total_estimated_price ?? flightCost) || 0;
+  const operationalExpenses = Math.max(total - flightCost, 0);
+
+  return [
+    { label: "Flight Cost", value: roundMoney(flightCost) },
+    { label: "Overnight Crew", value: 0 },
+    { label: "Operational Expenses", value: roundMoney(operationalExpenses) },
+  ];
+}
+
+export function buildCommercialBreakdownPresentation({
+  breakdownRows = [],
+  commercialMarginUsd = null,
+  commercialMarginPercent = 0,
+}) {
+  const normalizedRows = breakdownRows
+    .filter((row) => String(row?.label || "").trim())
+    .map((row) => ({
+      label: String(row.label || "Concept").trim(),
+      originalValue: roundMoney(row.value || 0),
+    }));
+
+  const baseSubtotalCents = normalizedRows.reduce(
+    (sum, row) => sum + toCents(row.originalValue),
+    0,
+  );
+  const marginCents =
+    commercialMarginUsd != null
+      ? toCents(commercialMarginUsd)
+      : Math.round(
+          baseSubtotalCents * (toNumber(commercialMarginPercent).toFixed(4) / 100),
+        );
+  const flightCostIndex = normalizedRows.findIndex((row) =>
+    /flight\s*cost/i.test(row.label),
+  );
+  const marginTargetIndex = flightCostIndex >= 0 ? flightCostIndex : 0;
+
+  const displayRows = normalizedRows.map((row, index) => {
+    const displayValueCents =
+      index === marginTargetIndex
+        ? toCents(row.originalValue) + marginCents
+        : toCents(row.originalValue);
+
+    return {
+      label: row.label,
+      originalValue: row.originalValue,
+      displayValue: fromCents(displayValueCents),
+    };
+  });
+
+  return {
+    baseSubtotal: fromCents(baseSubtotalCents),
+    commercialMargin: fromCents(marginCents),
+    displayFlightCost:
+      marginTargetIndex >= 0 ? displayRows[marginTargetIndex]?.displayValue || 0 : 0,
+    displayRows,
+    displayTotal: fromCents(
+      displayRows.reduce((sum, row) => sum + toCents(row.displayValue), 0),
+    ),
+  };
+}
+
+export function buildQuoteCommercialBreakdownPresentation(quote, customerRoutes = []) {
+  const originalRows = getOriginalCommercialBreakdownRows(quote, customerRoutes);
+  const pricing = resolveQuotePricing(quote, originalRows);
+
+  return {
+    originalRows,
+    pricing,
+    ...buildCommercialBreakdownPresentation({
+      breakdownRows: originalRows,
+      commercialMarginUsd: pricing.commercialMarginUsd,
+      commercialMarginPercent: pricing.commercialMarginPercent,
+    }),
+  };
 }
 
 function deriveMarginPercent(subtotalUsd, marginUsd) {
