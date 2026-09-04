@@ -32,7 +32,7 @@ export function getOriginalCommercialBreakdownRows(quote, customerRoutes = []) {
 
   if (Array.isArray(customRows) && customRows.length) {
     const filteredRows = customRows
-      .filter((row) => String(row?.label || "").trim() && !isTaxBreakdownLabel(row?.label))
+      .filter((row) => String(row?.label || "").trim())
       .map((row) => ({
         label: String(row.label || "Concept").trim(),
         value: roundMoney(row.value || 0),

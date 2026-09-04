@@ -363,7 +363,6 @@ function buildPdfEditorState(quote) {
   const savedBreakdownRows = quote.calculation_snapshot?.pdfBreakdownRows;
   const cleanedBreakdownRows = Array.isArray(savedBreakdownRows)
     ? savedBreakdownRows
-        .filter((row) => !/tax|iva|impuesto/i.test(String(row?.label || "")))
         .map((row) => ({
           label: row.label || "Concept",
           value: Number(row.value || 0),

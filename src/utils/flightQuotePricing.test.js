@@ -71,7 +71,7 @@ test("keeps additional concepts intact and only moves the margin into Flight Cos
   assert.equal(presentation.displayTotal, 11500.29);
 });
 
-test("excludes tax rows from the commercial base and preserves total consistency", () => {
+test("preserves manually entered tax rows and includes them in the PDF total", () => {
   const quote = {
     id: "quote-3",
     calculation_snapshot: {
@@ -82,32 +82,32 @@ test("excludes tax rows from the commercial base and preserves total consistency
         { label: "Tax (16%)", value: 960 },
       ],
       pdfPricing: {
-        commercialSubtotalUsd: 6000,
+        commercialSubtotalUsd: 6960,
         commercialMarginUsd: 900,
-        commercialMarginPercent: 15,
-        totalFinalUsd: 6900,
+        totalFinalUsd: 7860,
       },
     },
     flight_cost_usd: 5000,
     overnight_cost_usd: 900,
     operational_expenses_usd: 100,
     tax_amount_usd: 960,
-    total_usd: 6900,
-    subtotal_usd: 6000,
+    total_usd: 7860,
+    subtotal_usd: 6960,
   };
 
   const presentation = buildQuoteCommercialBreakdownPresentation(quote, []);
 
   assert.deepEqual(
     presentation.originalRows.map((row) => row.label),
-    ["Flight Cost", "Overnight Crew", "Operational Expenses"],
+    ["Flight Cost", "Overnight Crew", "Operational Expenses", "Tax (16%)"],
   );
-  assert.equal(getBreakdownSubtotal(presentation.originalRows), 6000);
+  assert.equal(getBreakdownSubtotal(presentation.originalRows), 6960);
   assert.equal(presentation.commercialMargin, 900);
   assert.equal(presentation.displayFlightCost, 5900);
-  assert.equal(presentation.displayTotal, 6900);
+  assert.equal(presentation.displayRows.at(-1).displayValue, 960);
+  assert.equal(presentation.displayTotal, 7860);
   assert.equal(
     presentation.displayRows.reduce((sum, row) => sum + row.displayValue, 0),
-    6900,
+    7860,
   );
 });
