@@ -299,9 +299,9 @@ const sendEmail = async () => {
 
     const sendSucceeded =
       response.ok &&
-      (data?.success === true ||
-        data?.ok === true ||
-        /enviado|sent/i.test(String(data?.message || rawResponse || "")));
+      data?.success !== false &&
+      data?.ok !== false &&
+      (data?.success === true || data?.ok === true);
 
     if (sendSucceeded) {
       const nextDescription = skipFollowUpLog

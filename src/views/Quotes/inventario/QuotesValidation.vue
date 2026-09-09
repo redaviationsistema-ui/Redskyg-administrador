@@ -4,12 +4,17 @@ import Swal from "sweetalert2";
 import { supabaseInventory } from "../../../supabase";
 import { useRoute, useRouter } from "vue-router";
 import { useFeedback } from "../../../composables/useFeedback";
+import AvailabilityConfirmationButton from "../../../components/AvailabilityConfirmationButton.vue";
 
 const router = useRouter();
 const route = useRoute();
 const feedback = useFeedback();
 
 const quotes = ref([]);
+function onAvailabilityRecordSaved(savedQuote) {
+  const quote = quotes.value.find((item) => item.id === savedQuote.id);
+  if (quote) quote.validation_description = savedQuote.validation_description;
+}
 const loading = ref(false);
 const selectedLanguage = ref("en");
 const hiddenAutoSendUrl = ref("");
@@ -923,6 +928,9 @@ onBeforeUnmount(() => {
                 <span v-else class="description-text description-empty">
                   No description yet
                 </span>
+                <span v-if="getDescriptionNotes(quote)" class="followup-log">
+                  {{ getDescriptionNotes(quote) }}
+                </span>
                 <span
                   v-if="getLatestFollowUpEntry(quote)"
                   class="followup-log"
@@ -932,6 +940,7 @@ onBeforeUnmount(() => {
               </td>
               <td data-label="Actions">
                 <div class="actions">
+                  <AvailabilityConfirmationButton :quote-id="quote.id" @record-saved="onAvailabilityRecordSaved" />
                   <button
                     class="btn btn-secondary"
                     @click="previewQuote(quote)"
