@@ -39,6 +39,10 @@ export function getDefaultBulkEmailDraft() {
     button_url: DEFAULT_BULK_EMAIL_BUTTON_URL,
     image_url: "",
     image_path: "",
+    attachment_url: "",
+    attachment_name: "",
+    attachment_mime_type: "",
+    attachment_size: "",
   };
 }
 
@@ -49,6 +53,7 @@ export function buildBulkEmailApiPayload(values = {}) {
   const buttonText = String(values.button_text || DEFAULT_BULK_EMAIL_BUTTON_TEXT).trim();
   const buttonUrl = String(values.button_url || DEFAULT_BULK_EMAIL_BUTTON_URL).trim();
   const imageUrl = String(values.image_url || values.image_preview_url || "").trim();
+  const attachmentUrl = String(values.attachment_url || "").trim();
 
   return {
     subject,
@@ -57,6 +62,10 @@ export function buildBulkEmailApiPayload(values = {}) {
     button_text: buttonText,
     button_url: buttonUrl,
     image_url: imageUrl,
+    attachment_url: attachmentUrl,
+    attachment_name: String(values.attachment_name || "").trim(),
+    attachment_mime_type: String(values.attachment_mime_type || "").trim(),
+    attachment_size: String(values.attachment_size || "").trim(),
     sender_name: String(values.sender_name || DEFAULT_BULK_EMAIL_SENDER_NAME).trim(),
     sender_email: String(values.sender_email || DEFAULT_BULK_EMAIL_SENDER_EMAIL).trim(),
     reply_to: String(values.reply_to || DEFAULT_BULK_EMAIL_REPLY_TO).trim(),

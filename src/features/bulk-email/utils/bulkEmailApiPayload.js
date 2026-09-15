@@ -1,5 +1,5 @@
 export function normalizeSendTestPayload(campaignId, email, payload = {}) {
-  return {
+  const normalized = {
     action: "send_test",
     campaign_id: campaignId,
     email: String(email || "").trim(),
@@ -14,6 +14,16 @@ export function normalizeSendTestPayload(campaignId, email, payload = {}) {
     image_url: String(payload.image_url || "").trim(),
     copy_internal: false,
   };
+
+  const attachmentUrl = String(payload.attachment_url || "").trim();
+  if (attachmentUrl) {
+    normalized.attachment_url = attachmentUrl;
+    normalized.attachment_name = String(payload.attachment_name || "").trim();
+    normalized.attachment_mime_type = String(payload.attachment_mime_type || "").trim();
+    normalized.attachment_size = String(payload.attachment_size || "").trim();
+  }
+
+  return normalized;
 }
 
 export function buildUrlEncodedBody(payload = {}) {

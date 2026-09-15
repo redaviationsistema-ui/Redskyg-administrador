@@ -2,6 +2,10 @@
 import { computed, ref } from "vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import { formatBytes } from "@/features/lookbooks/admin/services/lookbooksAdmin.service";
+import {
+  BULK_EMAIL_ATTACHMENT_ACCEPT,
+  isCampaignPdf,
+} from "../utils/bulkEmailAttachments";
 
 const props = defineProps({
   imageUrl: {
@@ -24,8 +28,9 @@ const emit = defineEmits(["upload", "remove"]);
 const fileInput = ref(null);
 const selectedFile = ref(null);
 
-const fileLabel = computed(() => selectedFile.value?.name || props.imagePath || "Sin imagen cargada");
+const fileLabel = computed(() => selectedFile.value?.name || props.imagePath || "Sin archivo cargado");
 const fileSize = computed(() => (selectedFile.value ? formatBytes(selectedFile.value.size) : "—"));
+const isPdf = computed(() => isCampaignPdf(selectedFile.value || props.imagePath));
 
 function openPicker() {
   fileInput.value?.click();
@@ -44,14 +49,19 @@ function onFileChange(event) {
 <template>
   <section class="image-card">
     <div class="image-preview">
-      <img v-if="imageUrl" :src="imageUrl" alt="Vista previa de campaña" />
-      <div v-else class="placeholder">Sin imagen principal</div>
+      <img v-if="imageUrl && !isPdf" :src="imageUrl" alt="Vista previa de campaña" />
+      <div v-else-if="isPdf" class="pdf-preview">
+        <strong>📄 {{ fileLabel }}</strong>
+        <span>PDF</span>
+        <span>Tamaño: {{ fileSize }}</span>
+      </div>
+      <div v-else class="placeholder">Sin archivo adjunto</div>
     </div>
 
     <div class="image-meta">
       <strong>{{ fileLabel }}</strong>
       <span>Tamaño: {{ fileSize }}</span>
-      <span>Estado: {{ uploading ? "Subiendo..." : imageUrl ? "Disponible" : "Pendiente" }}</span>
+      <span>Estado: {{ uploading ? "Subiendo..." : imageUrl || imagePath ? "Disponible" : "Pendiente" }}</span>
       <span v-if="imagePath">Ruta: {{ imagePath }}</span>
       <p v-if="error" class="error-text">{{ error }}</p>
     </div>
@@ -60,20 +70,20 @@ function onFileChange(event) {
       <input
         ref="fileInput"
         type="file"
-        accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif"
+        :accept="BULK_EMAIL_ATTACHMENT_ACCEPT"
         class="hidden-input"
         @change="onFileChange"
       />
       <BaseButton variant="secondary" :disabled="uploading || disabled" @click="openPicker">
-        {{ uploading ? "Subiendo..." : "Subir imagen" }}
+        {{ uploading ? "Subiendo..." : "Subir archivo" }}
       </BaseButton>
-      <BaseButton variant="secondary" :disabled="uploading || !imageUrl || disabled" @click="emit('remove')">
+      <BaseButton variant="secondary" :disabled="uploading || (!imageUrl && !imagePath) || disabled" @click="emit('remove')">
         Eliminar
       </BaseButton>
     </div>
 
     <p class="note">
-      La tabla actual solo expone `image_url` e `image_path`; las imágenes adicionales no tienen columna persistente todavía.
+      La tabla actual expone `image_url` e `image_path`; los PDF se envían como adjunto descargable.
     </p>
   </section>
 </template>
@@ -110,6 +120,19 @@ function onFileChange(event) {
 .placeholder {
   color: var(--text-faint);
   font-weight: 700;
+}
+
+.pdf-preview {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.pdf-preview strong {
+  color: var(--text-strong);
+  word-break: break-word;
 }
 
 .image-meta {

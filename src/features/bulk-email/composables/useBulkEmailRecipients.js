@@ -55,13 +55,25 @@ export function useBulkEmailRecipients(campaignIdRef) {
   }
 
   async function prepareRecipientsFromCsv(text) {
-    const parsed = parseCsv(text);
-    await prepareRecipients(parsed.records);
+    error.value = "";
+    try {
+      const parsed = parseCsv(text);
+      await prepareRecipients(parsed.records);
+    } catch (err) {
+      error.value = err?.message || "No fue posible leer el archivo CSV.";
+      throw err;
+    }
   }
 
   async function prepareRecipientsFromSpreadsheet(file) {
-    const parsed = await parseExcelFile(file);
-    await prepareRecipients(parsed.records);
+    error.value = "";
+    try {
+      const parsed = await parseExcelFile(file);
+      await prepareRecipients(parsed.records);
+    } catch (err) {
+      error.value = err?.message || "No fue posible leer el archivo Excel.";
+      throw err;
+    }
   }
 
   async function prepareRecipientsFromText(text = "") {
@@ -72,6 +84,7 @@ export function useBulkEmailRecipients(campaignIdRef) {
   }
 
   async function prepareRecipients(inputs = []) {
+    error.value = "";
     const emails = inputs.map((item) => item.email || item.correo || "");
     const unsubscribed = await checkUnsubscribedEmails(emails);
     const normalized = normalizeRecipients(inputs, unsubscribed.map((item) => item.email));

@@ -4,6 +4,7 @@ import { useRouter } from "vue-router";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import { useFeedback } from "@/composables/useFeedback";
 import { deleteCampaignImage, uploadCampaignImage } from "../services/bulkEmailStorage.service";
+import { isCampaignPdf } from "../utils/bulkEmailAttachments";
 import { getBulkEmailAccessStatus } from "../services/bulkEmailAccess.service";
 import { useBulkEmailRecipients } from "../composables/useBulkEmailRecipients";
 import { getDefaultBulkEmailDraft } from "../utils/bulkEmailTemplate";
@@ -97,16 +98,37 @@ const inventoryLoginTarget = computed(() => {
   return `/inventory-login?redirect=${encodeURIComponent(redirect)}`;
 });
 
+function fieldFromCampaignOrDraft(field, fallback = "") {
+  const value = props.campaign?.[field];
+  if (value !== undefined && value !== null) {
+    return value;
+  }
+
+  return draft[field] || fallback;
+}
+
 function syncDraft() {
   const defaults = createDraft();
+  const storedPath = props.campaign?.image_path || "";
+  const storedUrl = isCampaignPdf(storedPath) ? "" : props.campaign?.image_url || props.campaign?.image_preview_url || "";
+  const storedAttachmentUrl = isCampaignPdf(storedPath) ? props.campaign?.attachment_url || props.campaign?.image_preview_url || "" : "";
   Object.assign(draft, defaults, {
     subject: props.campaign?.subject || "",
     status: props.campaign?.status || "draft",
     sender_name: props.campaign?.sender_name || defaults.sender_name,
     sender_email: props.campaign?.sender_email || defaults.sender_email,
     reply_to: props.campaign?.reply_to || defaults.reply_to,
-    image_url: props.campaign?.image_url || props.campaign?.image_preview_url || "",
-    image_path: props.campaign?.image_path || "",
+    main_title: fieldFromCampaignOrDraft("main_title", defaults.main_title),
+    content_html: fieldFromCampaignOrDraft("content_html", defaults.content_html),
+    content_text: fieldFromCampaignOrDraft("content_text", defaults.content_text),
+    button_text: fieldFromCampaignOrDraft("button_text", defaults.button_text),
+    button_url: fieldFromCampaignOrDraft("button_url", defaults.button_url),
+    image_url: storedUrl,
+    image_path: storedPath,
+    attachment_url: storedAttachmentUrl,
+    attachment_name: isCampaignPdf(storedPath) ? props.campaign?.attachment_name || storedPath.split("/").pop() || "" : "",
+    attachment_mime_type: isCampaignPdf(storedPath) ? "application/pdf" : "",
+    attachment_size: props.campaign?.attachment_size || "",
   });
   imageError.value = "";
 }
@@ -245,7 +267,7 @@ async function sendTestFlow() {
   });
 }
 
-async function uploadImage(file) {
+async function uploadAttachment(file) {
   if (!canUploadImage.value) {
     imageError.value = accessWarningText.value || "No existe una sesiÃ³n vÃ¡lida en Supabase Inventory para usar Storage.";
     return;
@@ -259,10 +281,14 @@ async function uploadImage(file) {
       campaignId: props.campaign?.id || "draft",
       file,
     });
-    draft.image_url = upload.url;
+    draft.image_url = isCampaignPdf(file) ? "" : upload.url;
     draft.image_path = upload.path;
+    draft.attachment_url = isCampaignPdf(file) ? upload.url : "";
+    draft.attachment_name = isCampaignPdf(file) ? file.name : "";
+    draft.attachment_mime_type = isCampaignPdf(file) ? file.type : "";
+    draft.attachment_size = isCampaignPdf(file) ? String(file.size) : "";
   } catch (err) {
-    const message = err?.message || "No fue posible subir la imagen.";
+    const message = err?.message || "No fue posible subir el archivo.";
     imageError.value = message.includes("row-level security")
       ? "Supabase rechazÃ³ la carga por polÃ­ticas RLS del bucket `bulk-email-images`. Verifica que la sesiÃ³n de Inventory tenga permisos sobre Storage."
       : message;
@@ -271,9 +297,13 @@ async function uploadImage(file) {
   }
 }
 
-async function removeImage() {
+async function removeAttachment() {
   if (!draft.image_path) {
     draft.image_url = "";
+    draft.attachment_url = "";
+    draft.attachment_name = "";
+    draft.attachment_mime_type = "";
+    draft.attachment_size = "";
     return;
   }
 
@@ -281,8 +311,28 @@ async function removeImage() {
     await deleteCampaignImage(draft.image_path);
     draft.image_url = "";
     draft.image_path = "";
+    draft.attachment_url = "";
+    draft.attachment_name = "";
+    draft.attachment_mime_type = "";
+    draft.attachment_size = "";
   } catch (err) {
-    imageError.value = err?.message || "No fue posible eliminar la imagen.";
+    imageError.value = err?.message || "No fue posible eliminar el archivo.";
+  }
+}
+
+async function prepareCsvFlow(text) {
+  try {
+    await prepareRecipientsFromCsv(text);
+  } catch (error) {
+    feedback.error("No fue posible leer destinatarios", error);
+  }
+}
+
+async function prepareSpreadsheetFlow(file) {
+  try {
+    await prepareRecipientsFromSpreadsheet(file);
+  } catch (error) {
+    feedback.error("No fue posible leer el Excel", error);
   }
 }
 
@@ -351,15 +401,15 @@ onMounted(loadAccessStatus);
       </label>
 
       <div class="field">
-        <span>Imagen opcional</span>
+        <span>Archivo opcional</span>
         <BulkEmailImageUploader
           :image-url="draft.image_url"
           :image-path="draft.image_path"
           :uploading="imageUploading"
           :error="imageError"
           :disabled="!canUploadImage || sending"
-          @upload="uploadImage"
-          @remove="removeImage"
+          @upload="uploadAttachment"
+          @remove="removeAttachment"
         />
       </div>
     </section>
@@ -370,8 +420,8 @@ onMounted(loadAccessStatus);
         :summary="importSummary"
         :importing="importing"
         :disabled="!accessStatus.hasInventorySession || sending"
-        @prepare-csv="prepareRecipientsFromCsv"
-        @prepare-spreadsheet="prepareRecipientsFromSpreadsheet"
+        @prepare-csv="prepareCsvFlow"
+        @prepare-spreadsheet="prepareSpreadsheetFlow"
         @prepare-text="prepareRecipientsFromText"
         @prepare-single="prepareRecipients"
         @confirm-import="confirmImportFlow"
@@ -553,9 +603,3 @@ onMounted(loadAccessStatus);
   }
 }
 </style>
-
-
-
-
-
-

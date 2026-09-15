@@ -1,9 +1,9 @@
 import { supabaseInventory } from "@/supabase";
+import { isCampaignPdf, validateCampaignAttachment } from "../utils/bulkEmailAttachments";
+
+export { isCampaignPdf };
 
 const BULK_EMAIL_IMAGES_BUCKET = "bulk-email-images";
-const ACCEPTED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
-
 function sanitizeSegment(value = "", fallback = "image") {
   return String(value || fallback)
     .normalize("NFD")
@@ -19,15 +19,7 @@ export function validateCampaignImage(file) {
     return "";
   }
 
-  if (!ACCEPTED_MIME_TYPES.includes(file.type)) {
-    return "La imagen debe ser JPG, JPEG, PNG, WEBP o GIF.";
-  }
-
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    return "La imagen no puede exceder 5 MB.";
-  }
-
-  return "";
+  return validateCampaignAttachment(file);
 }
 
 function buildFilePath(campaignId, fileName) {

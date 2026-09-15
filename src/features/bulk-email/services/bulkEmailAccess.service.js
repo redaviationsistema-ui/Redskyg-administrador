@@ -37,7 +37,7 @@ export async function getBulkEmailAccessStatus() {
     warnings: [
       ...(session?.access_token ? [] : ["No hay sesión activa en Supabase Inventory."]),
       ...(session?.access_token && !roles.length
-        ? ["El JWT de Inventory no expone roles; si el bucket exige admin, Storage seguirá rechazando uploads."]
+        ? [""]
         : []),
     ],
   };

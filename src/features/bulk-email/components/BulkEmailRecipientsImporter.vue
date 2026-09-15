@@ -18,6 +18,7 @@ const props = defineProps({
 const emit = defineEmits(["prepare-csv", "prepare-spreadsheet", "prepare-text", "prepare-single", "confirm-import", "clear"]);
 
 const manualList = ref("");
+const selectedImportFileName = ref("");
 const single = ref({
   email: "",
   name: "",
@@ -30,19 +31,23 @@ function onCsvSelected(event) {
     return;
   }
 
+  selectedImportFileName.value = file.name;
   const extension = String(file.name.split(".").pop() || "").toLowerCase();
   if (extension === "xlsx" || extension === "xls") {
     emit("prepare-spreadsheet", file);
-    event.target.value = "";
     return;
   }
 
   const reader = new FileReader();
   reader.onload = () => {
     emit("prepare-csv", typeof reader.result === "string" ? reader.result : "");
-    event.target.value = "";
   };
   reader.readAsText(file);
+}
+
+function clearImportSelection() {
+  selectedImportFileName.value = "";
+  emit("clear");
 }
 
 function submitManualList() {
@@ -66,7 +71,10 @@ function submitSingleRecipient() {
         <h3>Destinatarios</h3>
         <p>Importa CSV o Excel, pega listas manuales o agrega contactos individuales.</p>
       </div>
-      <input type="file" accept=".csv,text/csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="onCsvSelected" />
+      <div class="file-import-control">
+        <input type="file" accept=".csv,text/csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" :disabled="disabled || importing" @change="onCsvSelected" />
+        <span v-if="selectedImportFileName">{{ selectedImportFileName }}</span>
+      </div>
     </header>
 
     <div class="importer-grid">
@@ -131,7 +139,7 @@ function submitSingleRecipient() {
     </div>
 
     <div class="actions">
-      <BaseButton variant="secondary" :disabled="!rows.length || importing" @click="emit('clear')">
+      <BaseButton variant="secondary" :disabled="!rows.length || importing" @click="clearImportSelection">
         Limpiar revisión
       </BaseButton>
       <BaseButton :disabled="!summary.ready || importing || disabled" @click="emit('confirm-import')">
@@ -157,6 +165,20 @@ function submitSingleRecipient() {
   justify-content: space-between;
   gap: 16px;
   align-items: flex-start;
+}
+
+.file-import-control {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  min-width: min(100%, 420px);
+}
+
+.file-import-control span {
+  max-width: 100%;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
 }
 
 .section-head h3,

@@ -85,7 +85,7 @@ async function parseJsonResponseOrThrow(responseText) {
 }
 
 function normalizeSendSinglePayload(campaignId, recipient = {}, payload = {}) {
-  return {
+  const normalized = {
     action: "send_single",
     campaign_id: campaignId,
     email: String(recipient.email || "").trim(),
@@ -102,6 +102,16 @@ function normalizeSendSinglePayload(campaignId, recipient = {}, payload = {}) {
     image_url: String(payload.image_url || "").trim(),
     copy_internal: false,
   };
+
+  const attachmentUrl = String(payload.attachment_url || "").trim();
+  if (attachmentUrl) {
+    normalized.attachment_url = attachmentUrl;
+    normalized.attachment_name = String(payload.attachment_name || "").trim();
+    normalized.attachment_mime_type = String(payload.attachment_mime_type || "").trim();
+    normalized.attachment_size = String(payload.attachment_size || "").trim();
+  }
+
+  return normalized;
 }
 
 function shouldRetryAsJson(response, responseText) {
@@ -258,16 +268,34 @@ export async function sendSingleCampaignRecipient(campaignId, recipient, payload
     response = await fetch(apiUrl, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         Accept: "application/json",
       },
-      body: JSON.stringify(requestPayload),
+      body: buildUrlEncodedBody(requestPayload),
     });
   } catch (error) {
     throw new Error(buildApiErrorMessage(error));
   }
 
   responseText = await response.text();
+
+  if (shouldRetrySendTestAsForm(response, responseText)) {
+    try {
+      response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(requestPayload),
+      });
+    } catch (error) {
+      throw new Error(buildApiErrorMessage(error));
+    }
+
+    responseText = await response.text();
+  }
+
   const result = await parseJsonResponseOrThrow(responseText);
 
   if (!response.ok || result?.success !== true) {

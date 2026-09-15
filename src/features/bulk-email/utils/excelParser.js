@@ -1,8 +1,21 @@
 import * as XLSX from "xlsx";
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
 function normalizeHeader(value, index) {
   const header = String(value || "").trim().toLowerCase();
   return header || `column_${index + 1}`;
+}
+
+function hasEmailHeader(headers = []) {
+  return headers.some((header) => ["email", "correo"].includes(String(header || "").toLowerCase()));
+}
+
+function recordsFromEmailCells(rows = []) {
+  return rows
+    .flatMap((items) => items.map((value) => String(value || "").trim()))
+    .filter((value) => EMAIL_PATTERN.test(value))
+    .map((email) => ({ email }));
 }
 
 export async function parseExcelFile(file) {
@@ -34,6 +47,13 @@ export async function parseExcelFile(file) {
 
   const [firstRow, ...dataRows] = rows;
   const headers = firstRow.map((value, index) => normalizeHeader(value, index));
+  if (!hasEmailHeader(headers)) {
+    return {
+      headers: ["email"],
+      records: recordsFromEmailCells(rows),
+    };
+  }
+
   const records = dataRows
     .filter((items) => items.some((value) => String(value || "").trim() !== ""))
     .map((items) =>

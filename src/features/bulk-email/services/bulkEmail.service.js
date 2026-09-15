@@ -1,5 +1,6 @@
 import { supabaseInventory } from "@/supabase";
 import { getCampaignImageUrl } from "./bulkEmailStorage.service";
+import { isCampaignPdf } from "../utils/bulkEmailAttachments";
 import { isValidEmail, normalizeEmail } from "../utils/emailValidator";
 import { buildMutableStatsFields } from "../utils/bulkEmailCampaignState";
 
@@ -86,16 +87,30 @@ async function mapCampaign(record) {
   const sentCount = Number(record.sent_count || 0);
   const failedCount = Number(record.failed_count || 0);
   let imagePreviewUrl = "";
+  let attachmentUrl = "";
+  const storedFilePath = record.image_path || record.image_url || "";
 
   try {
-    imagePreviewUrl = await getCampaignImageUrl(record.image_path || record.image_url || "");
+    const storedFileUrl = await getCampaignImageUrl(storedFilePath);
+    if (isCampaignPdf(storedFilePath)) {
+      attachmentUrl = storedFileUrl;
+    } else {
+      imagePreviewUrl = storedFileUrl;
+    }
   } catch {
-    imagePreviewUrl = record.image_url || "";
+    if (isCampaignPdf(storedFilePath)) {
+      attachmentUrl = record.image_url || "";
+    } else {
+      imagePreviewUrl = record.image_url || "";
+    }
   }
 
   return {
     ...record,
     image_preview_url: imagePreviewUrl,
+    attachment_url: attachmentUrl,
+    attachment_name: isCampaignPdf(storedFilePath) ? deriveImageName(record) : "",
+    attachment_mime_type: isCampaignPdf(storedFilePath) ? "application/pdf" : "",
     internal_name: record.subject || `Campaña #${record.id}`,
     pending_count: Math.max(totalRecipients - sentCount - failedCount, 0),
   };
