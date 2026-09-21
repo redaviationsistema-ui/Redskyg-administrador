@@ -171,12 +171,15 @@ async function send() {
 }
 async function toggleControl() {
   if (!conversation.value || busy.value || refreshActive.value) return;
+  const id = conversation.value.id;
   controlling.value = true;
   actionError.value = "";
   try {
-    const result = await (human.value ? api.returnToBot(selectedId.value) : api.takeoverConversation(selectedId.value));
+    await (human.value ? api.returnToBot(id) : api.takeoverConversation(id));
+    const result = await api.getConversation(id);
     if (disposed) return;
     conversation.value = { ...conversation.value, ...result.data };
+    summary.value = result.summary || "";
     updateList(result.data);
   } catch (error) { if (!disposed) actionError.value = error.message; }
   finally { controlling.value = false; }
