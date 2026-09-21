@@ -31,6 +31,13 @@ const routes = [
         component: () => import("@/views/Dashboard/DashboardView.vue"),
       },
 
+      {
+        path: "whatsapp",
+        name: "WhatsAppConversations",
+        component: () => import("@/views/WhatsApp/WhatsAppConversationsView.vue"),
+        meta: { requiresAdmin: true },
+      },
+
       // QUOTES LIST
       {
         path: "quotes",

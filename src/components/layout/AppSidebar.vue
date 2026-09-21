@@ -19,6 +19,7 @@ const mainLinks = [
   { to: "/aircraft", label: "Aircraft", hint: "Fleet" },
   { to: "/airports", label: "Airports", hint: "Directory" },
   { to: "/comercial", label: "Centro Comercial", hint: "Pipeline y ventas" },
+  { to: "/whatsapp", label: "WhatsApp", hint: "Conversaciones y vuelos", icon: "chat" },
   { to: "/correos-masivos", label: "Correos masivos", hint: "Campaigns" },
   { to: "/", label: "Dashboard", hint: "Overview" },
   { to: "/admin/encuestas", label: "Encuestas", hint: "Voz del cliente" },
@@ -79,6 +80,10 @@ const salesSectionActive = computed(() => route.path === "/quotes/follow-up");
             class="nav-link"
             @click="emit('close')"
           >
+            <svg v-if="link.icon === 'chat'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex-shrink: 0">
+              <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-4-.9L3 21l1.9-5.5a9 9 0 0 1-.9-4A8.5 8.5 0 0 1 12.5 3H13a8.5 8.5 0 0 1 8 8v.5Z" />
+              <path d="M8 9h8M8 13h5" />
+            </svg>
             <span v-if="link.badge" class="nav-badge" aria-hidden="true">{{ link.badge }}</span>
             <div class="nav-copy">
               <strong>{{ link.label }}</strong>
