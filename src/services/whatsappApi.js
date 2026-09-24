@@ -2,7 +2,7 @@ const configuredUrl = import.meta.env?.VITE_WHATSAPP_API_URL || "";
 
 export function createWhatsAppApi(baseUrl, fetcher = (...args) => fetch(...args)) {
   const root = String(baseUrl).trim().replace(/\/+$/, "");
-  async function request(path = "", { method = "GET", body, signal, ...params } = {}) {
+  async function request(resource, path = "", { method = "GET", body, signal, ...params } = {}) {
     if (!root) throw new Error("No se configuró la conexión de WhatsApp.");
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value != null));
     const controller = new AbortController();
@@ -11,7 +11,7 @@ export function createWhatsAppApi(baseUrl, fetcher = (...args) => fetch(...args)
     if (signal?.aborted) abort();
     const timeout = setTimeout(abort, 60000);
     try {
-      const response = await fetcher(`${root}/api/admin/whatsapp/conversations${path}${query.size ? `?${query}` : ""}`, {
+      const response = await fetcher(`${root}/api/admin/whatsapp/${resource}${path}${query.size ? `?${query}` : ""}`, {
         method, credentials: "omit", signal: controller.signal,
         headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
@@ -35,13 +35,15 @@ export function createWhatsAppApi(baseUrl, fetcher = (...args) => fetch(...args)
   }
   const idPath = (id) => `/${encodeURIComponent(String(id))}`;
   return {
-    getConversations: (options = {}) => request("", options),
-    getConversation: (id, options = {}) => request(idPath(id), options),
-    getMessages: (id, options = {}) => request(`${idPath(id)}/messages`, options),
-    sendMessage: (id, body) => request(`${idPath(id)}/messages`, { method: "POST", body: { body } }),
-    takeoverConversation: (id) => request(`${idPath(id)}/takeover`, { method: "POST" }),
-    returnToBot: (id) => request(`${idPath(id)}/return-to-bot`, { method: "POST" }),
+    getConversations: (options = {}) => request("conversations", "", options),
+    getConversation: (id, options = {}) => request("conversations", idPath(id), options),
+    getMessages: (id, options = {}) => request("conversations", `${idPath(id)}/messages`, options),
+    sendMessage: (id, body) => request("conversations", `${idPath(id)}/messages`, { method: "POST", body: { body } }),
+    takeoverConversation: (id) => request("conversations", `${idPath(id)}/takeover`, { method: "POST" }),
+    returnToBot: (id) => request("conversations", `${idPath(id)}/return-to-bot`, { method: "POST" }),
+    getFlightRequests: (options = {}) => request("flight-requests", "", options),
+    getFlightRequest: (id, options = {}) => request("flight-requests", idPath(id), options),
   };
 }
 
-export const { getConversations, getConversation, getMessages, sendMessage, takeoverConversation, returnToBot } = createWhatsAppApi(configuredUrl);
+export const { getConversations, getConversation, getMessages, sendMessage, takeoverConversation, returnToBot, getFlightRequests, getFlightRequest } = createWhatsAppApi(configuredUrl);

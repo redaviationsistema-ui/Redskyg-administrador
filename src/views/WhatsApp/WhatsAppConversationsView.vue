@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import BaseButton from "@/components/ui/BaseButton.vue";
 import WhatsAppFlightPanel from "@/components/whatsapp/WhatsAppFlightPanel.vue";
+import WhatsAppQuotesPanel from "@/components/whatsapp/WhatsAppQuotesPanel.vue";
 import { usePagination } from "@/composables/usePagination";
 import * as api from "@/services/whatsappApi";
 import { conversationLabel, filterConversations, formatTimestamp, isHuman, mergeMessages } from "@/utils/whatsappDisplay";
@@ -25,6 +26,7 @@ const historyPage = ref(1);
 const historyLoading = ref(false);
 const chatLog = ref(null);
 const refreshActive = ref(false);
+const activeTab = ref("conversations");
 let listController;
 let chatController;
 let generation = 0;
@@ -201,12 +203,17 @@ onBeforeUnmount(() => {
   <div class="whatsapp-page">
     <header class="page-heading">
       <div><p class="eyebrow">Centro de atención</p><h1>WhatsApp</h1><p class="muted">Conversaciones y solicitudes de vuelo en un solo lugar.</p></div>
-      <BaseButton variant="secondary" :disabled="listLoading || busy" @click="loadConversations">{{ listLoading ? "Actualizando…" : "Actualizar conversaciones" }}</BaseButton>
+      <BaseButton v-if="activeTab === 'conversations'" variant="secondary" :disabled="listLoading || busy" @click="loadConversations">{{ listLoading ? "Actualizando…" : "Actualizar conversaciones" }}</BaseButton>
     </header>
-    <nav class="filters" aria-label="Filtrar conversaciones">
+    <nav class="section-tabs" aria-label="Secciones de WhatsApp">
+      <button type="button" :aria-pressed="activeTab === 'conversations'" :class="{ active: activeTab === 'conversations' }" @click="activeTab = 'conversations'">Conversaciones</button>
+      <button type="button" :aria-pressed="activeTab === 'quotes'" :class="{ active: activeTab === 'quotes' }" @click="activeTab = 'quotes'">Cotizaciones</button>
+    </nav>
+    <nav v-if="activeTab === 'conversations'" class="filters" aria-label="Filtrar conversaciones">
       <button v-for="item in filters" :key="item.id" type="button" :aria-pressed="filter === item.id" :class="{ active: filter === item.id }" @click="filter = item.id">{{ item.label }}</button>
     </nav>
-    <div class="workspace">
+    <WhatsAppQuotesPanel v-if="activeTab === 'quotes'" />
+    <div v-else class="workspace">
       <section class="conversation-list" aria-label="Conversaciones" :aria-busy="listLoading">
         <div class="list-heading"><h2>Conversaciones <span>{{ filtered.length }}</span></h2><label class="sr-only" for="whatsapp-search">Buscar por nombre, teléfono o mensaje</label><input id="whatsapp-search" v-model="search" type="search" placeholder="Nombre, teléfono o mensaje"></div>
         <div v-if="listError" class="error" role="alert">{{ listError }}<button type="button" @click="loadConversations">Reintentar</button></div>
@@ -262,6 +269,9 @@ onBeforeUnmount(() => {
 h1 { margin: 4px 0; font-size: 1.8rem; color: var(--text-strong); } h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
 .eyebrow { color: var(--primary); text-transform: uppercase; font-size: .72rem; font-weight: 800; letter-spacing: .12em; margin: 0; }
 .muted { color: var(--text-muted); font-size: .82rem; } .page-heading p { margin: 6px 0; }
+.section-tabs { display: flex; width: fit-content; padding: 4px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-surface-solid); }
+.section-tabs button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: .84rem; font-weight: 700; }
+.section-tabs button.active { color: var(--primary); background: var(--primary-soft); }
 .filters { display: flex; flex-wrap: wrap; gap: 8px; }
 .filters button { padding: 10px 16px; border-radius: 20px; background: var(--bg-surface-solid); color: var(--text-muted); border: 1px solid var(--border-color); cursor: pointer; font: inherit; font-size: .85rem; }
 .filters button.active { color: var(--primary); background: var(--primary-soft); border-color: var(--primary); }
