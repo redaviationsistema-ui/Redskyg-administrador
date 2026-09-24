@@ -1,264 +1,713 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import BaseButton from "@/components/ui/BaseButton.vue";
-import WhatsAppFlightPanel from "@/components/whatsapp/WhatsAppFlightPanel.vue";
-import WhatsAppQuotesPanel from "@/components/whatsapp/WhatsAppQuotesPanel.vue";
-import { usePagination } from "@/composables/usePagination";
 import * as api from "@/services/whatsappApi";
-import { conversationLabel, filterConversations, formatTimestamp, isHuman, mergeMessages } from "@/utils/whatsappDisplay";
 
-const conversations = ref([]);
-const search = ref("");
-const filter = ref("all");
-const listLoading = ref(false);
-const listError = ref("");
-const selectedId = ref(null);
-const conversation = ref(null);
-const summary = ref("");
+const props = defineProps({
+  section: {
+    type: String,
+    default: "summary",
+  },
+});
+
+const route = useRoute();
+const router = useRouter();
+const perPageOptions = [10, 25, 50, 100];
+const statuses = ["NUEVA", "PENDIENTE", "EN_ATENCION", "CERRADA", "CANCELADA"];
+const dashboard = ref(null);
+const loading = ref(false);
+const error = ref("");
+const rows = ref([]);
+const meta = ref({});
+const detailOpen = ref(false);
+const detailLoading = ref(false);
+const detailError = ref("");
+const selected = ref(null);
 const messages = ref([]);
-const chatLoading = ref(false);
-const chatError = ref("");
-const actionError = ref("");
-const sending = ref(false);
-const controlling = ref(false);
-const drafts = ref({});
-const historyPage = ref(1);
-const historyLoading = ref(false);
-const chatLog = ref(null);
-const refreshActive = ref(false);
-const activeTab = ref("conversations");
-let listController;
-let chatController;
-let generation = 0;
-let disposed = false;
-let pollTimer;
+const relatedRequests = ref(null);
+const statusSaving = ref(false);
+let controller;
 
-const filters = [{ id: "all", label: "Todas" }, { id: "bot", label: "Bot activo" }, { id: "human", label: "Atención humana" }, { id: "quoted", label: "Cotización solicitada" }, { id: "finished", label: "Finalizadas" }];
-const filtered = computed(() => filterConversations(conversations.value, search.value, filter.value));
-const { currentPage, totalPages, paginatedItems, nextPage, prevPage } = usePagination(filtered, 12);
-const draft = computed({ get: () => drafts.value[selectedId.value] || "", set: (value) => { drafts.value[selectedId.value] = value; } });
-const human = computed(() => isHuman(conversation.value));
-const busy = computed(() => sending.value || controlling.value);
-const deliveryLabels = { sent: "Enviado", delivered: "Entregado", read: "Leído", failed: "Fallido" };
-watch([search, filter], () => { currentPage.value = 1; });
-watch(totalPages, (pages) => { currentPage.value = Math.min(currentPage.value, Math.max(1, pages)); });
+const sections = [
+  { id: "summary", label: "Resumen", to: "/whatsapp" },
+  { id: "conversations", label: "Conversaciones", to: "/whatsapp/conversaciones" },
+  { id: "quotes", label: "Cotizaciones", to: "/whatsapp/cotizaciones" },
+  { id: "parts", label: "Partes y refacciones", to: "/whatsapp/partes" },
+  { id: "engines", label: "Motores", to: "/whatsapp/motores" },
+  { id: "support", label: "Atención / soporte", to: "/whatsapp/soporte" },
+  { id: "advisor", label: "Solicitudes de asesor", to: "/whatsapp/asesores" },
+  { id: "history", label: "Historial", to: "/whatsapp/historial" },
+];
 
-function updateList(item) {
-  conversations.value = conversations.value.map((existing) => existing.id === item.id ? { ...existing, ...item } : existing)
-    .sort((a, b) => String(b.last_message_at || "").localeCompare(String(a.last_message_at || "")) || b.id - a.id);
+const requestSections = {
+  parts: {
+    title: "Partes y refacciones",
+    empty: "No hay solicitudes de partes registradas.",
+    getList: api.getParts,
+    getDetail: api.getPart,
+    updateStatus: api.updatePartStatus,
+    filters: ["search", "status", "condition", "date_from", "date_to"],
+    columns: [
+      ["id", "ID"],
+      ["part_number", "P/N"],
+      ["description", "Descripción"],
+      ["quantity", "Cantidad"],
+      ["condition", "Condición"],
+      ["contact", "Contacto"],
+      ["status", "Estado"],
+      ["created_at", "Fecha"],
+    ],
+    detailFields: [
+      ["id", "ID"],
+      ["part_number", "P/N"],
+      ["description", "Descripción"],
+      ["quantity", "Cantidad"],
+      ["condition", "Condición"],
+      ["comments", "Comentarios"],
+      ["status", "Estado"],
+      ["conversation_id", "Conversación"],
+      ["created_at", "Fecha"],
+    ],
+  },
+  engines: {
+    title: "Motores",
+    empty: "No hay solicitudes de motores registradas.",
+    getList: api.getEngines,
+    getDetail: api.getEngine,
+    updateStatus: api.updateEngineStatus,
+    filters: ["search", "status", "condition", "service_type", "date_from", "date_to"],
+    columns: [
+      ["id", "ID"],
+      ["engine_model", "Modelo"],
+      ["part_number", "P/N"],
+      ["serial_number", "S/N"],
+      ["condition", "Condición"],
+      ["service_type", "Tipo de solicitud"],
+      ["contact", "Contacto"],
+      ["status", "Estado"],
+      ["created_at", "Fecha"],
+    ],
+    detailFields: [
+      ["engine_model", "Modelo"],
+      ["part_number", "P/N"],
+      ["serial_number", "S/N"],
+      ["condition", "Condición"],
+      ["service_type", "Tipo de solicitud"],
+      ["comments", "Comentarios"],
+      ["status", "Estado"],
+      ["conversation_id", "Conversación"],
+      ["created_at", "Fecha"],
+    ],
+  },
+  support: {
+    title: "Atención / soporte",
+    empty: "No hay solicitudes de soporte registradas.",
+    getList: api.getSupport,
+    getDetail: api.getSupportRequest,
+    updateStatus: api.updateSupportStatus,
+    filters: ["search", "status", "reason", "priority", "date_from", "date_to"],
+    columns: [
+      ["id", "ID"],
+      ["reason", "Motivo"],
+      ["reference", "Referencia"],
+      ["priority", "Prioridad"],
+      ["contact", "Contacto"],
+      ["status", "Estado"],
+      ["created_at", "Fecha"],
+    ],
+    detailFields: [
+      ["reason", "Motivo"],
+      ["reference", "Referencia"],
+      ["description", "Descripción"],
+      ["priority", "Prioridad"],
+      ["comments", "Comentarios"],
+      ["status", "Estado"],
+      ["conversation_id", "Conversación"],
+      ["created_at", "Fecha"],
+    ],
+  },
+  advisor: {
+    title: "Solicitudes de asesor",
+    empty: "No hay solicitudes de asesor registradas.",
+    getList: api.getAdvisorRequests,
+    getDetail: api.getAdvisorRequest,
+    updateStatus: api.updateAdvisorStatus,
+    filters: ["search", "status", "reason", "transferred", "date_from", "date_to"],
+    columns: [
+      ["id", "ID"],
+      ["reason", "Motivo"],
+      ["reference", "Referencia"],
+      ["contact", "Contacto"],
+      ["status", "Estado"],
+      ["transferred_at", "Transferido"],
+      ["created_at", "Fecha"],
+    ],
+    detailFields: [
+      ["reason", "Motivo"],
+      ["reference", "Referencia"],
+      ["comments", "Comentarios"],
+      ["status", "Estado"],
+      ["transferred_at", "Transferido"],
+      ["conversation_id", "Conversación"],
+      ["created_at", "Fecha"],
+    ],
+  },
+};
+
+const labels = {
+  search: "Búsqueda",
+  state: "Estado",
+  active_section: "Sección activa",
+  transferred_to_human: "Atención",
+  status: "Estado",
+  aircraft: "Aeronave",
+  date: "Fecha",
+  date_from: "Desde",
+  date_to: "Hasta",
+  condition: "Condición",
+  service_type: "Tipo de solicitud",
+  reason: "Motivo",
+  priority: "Prioridad",
+  transferred: "Transferido",
+};
+
+const filters = reactive({
+  search: "",
+  state: "",
+  active_section: "",
+  transferred_to_human: "",
+  status: "",
+  aircraft: "",
+  date: "",
+  date_from: "",
+  date_to: "",
+  condition: "",
+  service_type: "",
+  reason: "",
+  priority: "",
+  transferred: "",
+  page: 1,
+  per_page: 25,
+});
+
+const currentSection = computed(() => props.section || "summary");
+const activeRequestConfig = computed(() => requestSections[currentSection.value]);
+const pageTitle = computed(() => sections.find((section) => section.id === currentSection.value)?.label || "WhatsApp");
+const pageDescription = computed(() => {
+  if (currentSection.value === "summary") {
+    return "Resumen operativo de conversaciones y solicitudes de WhatsApp.";
+  }
+  if (currentSection.value === "history") {
+    return "Timeline administrativo de mensajes registrados por el backend.";
+  }
+  return "Consulta, filtra y gestiona datos reales del flujo de WhatsApp.";
+});
+
+const isHuman = (conversation) => Boolean(conversation?.transferred_to_human_at || conversation?.state === "TRANSFER_TO_HUMAN");
+const hasRows = computed(() => rows.value.length > 0);
+
+function formatDate(value) {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
-async function loadConversations() {
-  listController?.abort();
-  const controller = new AbortController();
-  listController = controller;
-  listLoading.value = true;
-  listError.value = "";
-  try {
-    const first = await api.getConversations({ per_page: 100, signal: controller.signal });
-    if (!Array.isArray(first.data)) throw new Error("La lista de conversaciones no tiene un formato válido.");
-    const all = [...first.data];
-    for (let page = 2; page <= (first.meta?.last_page || 1); page++) {
-      const result = await api.getConversations({ page, per_page: 100, signal: controller.signal });
-      all.push(...result.data);
+
+function formatValue(item, key) {
+  if (key === "contact") {
+    return item.contact?.name || item.contact?.phone_number || "—";
+  }
+  if (key.endsWith("_at") || key === "created_at" || key === "updated_at") {
+    return formatDate(item[key]);
+  }
+  if (key === "estimated_price") {
+    return item[key] ? `${item.currency || "USD"} ${Number(item[key]).toLocaleString("es-MX")}` : "—";
+  }
+  return item[key] ?? "—";
+}
+
+function cleanFilterPayload(extra = {}) {
+  const payload = {
+    ...extra,
+    page: filters.page,
+    per_page: filters.per_page,
+  };
+  for (const key of Object.keys(filters)) {
+    if (!["page", "per_page"].includes(key) && filters[key] !== "") {
+      payload[key] = filters[key];
     }
-    if (controller.signal.aborted || disposed) return;
-    conversations.value = [...new Map(all.map((item) => [item.id, item])).values()];
-    if (conversation.value) updateList(conversation.value);
-  } catch (error) {
-    if (!controller.signal.aborted && !disposed) listError.value = error.message;
+  }
+  return payload;
+}
+
+function resetFilters() {
+  Object.assign(filters, {
+    search: "",
+    state: "",
+    active_section: "",
+    transferred_to_human: "",
+    status: "",
+    aircraft: "",
+    date: "",
+    date_from: "",
+    date_to: "",
+    condition: "",
+    service_type: "",
+    reason: "",
+    priority: "",
+    transferred: "",
+    page: 1,
+    per_page: 25,
+  });
+}
+
+function filterKeys() {
+  if (currentSection.value === "conversations") {
+    return ["search", "state", "active_section", "transferred_to_human", "date_from", "date_to"];
+  }
+  if (currentSection.value === "quotes") {
+    return ["search", "status", "aircraft", "date", "date_from", "date_to"];
+  }
+  return activeRequestConfig.value?.filters || [];
+}
+
+async function loadDashboard(signal) {
+  const result = await api.getDashboard({ signal });
+  dashboard.value = result.data;
+}
+
+async function loadRows(signal) {
+  let result;
+  if (currentSection.value === "conversations") {
+    result = await api.getConversations(cleanFilterPayload({ signal }));
+  } else if (currentSection.value === "quotes") {
+    result = await api.getFlightRequests(cleanFilterPayload({ signal }));
+  } else if (currentSection.value === "history") {
+    result = await api.getHistory({ page: filters.page, per_page: filters.per_page, signal });
+  } else if (activeRequestConfig.value) {
+    result = await activeRequestConfig.value.getList(cleanFilterPayload({ signal }));
+  }
+
+  rows.value = Array.isArray(result?.data) ? result.data : [];
+  meta.value = result?.meta || {};
+}
+
+async function load() {
+  controller?.abort();
+  controller = new AbortController();
+  loading.value = true;
+  error.value = "";
+  rows.value = [];
+  meta.value = {};
+
+  try {
+    if (currentSection.value === "summary") {
+      await loadDashboard(controller.signal);
+    } else {
+      await loadRows(controller.signal);
+    }
+  } catch (loadError) {
+    if (!controller.signal.aborted) {
+      error.value = loadError.message;
+    }
   } finally {
-    if (listController === controller) listLoading.value = false;
+    if (!controller.signal.aborted) {
+      loading.value = false;
+    }
   }
 }
-async function latestMessages(id, signal) {
-  const first = await api.getMessages(id, { per_page: 50, signal });
-  const last = first.meta?.last_page || 1;
-  return { result: last > 1 ? await api.getMessages(id, { per_page: 50, page: last, signal }) : first, page: last };
+
+function applyFilters() {
+  filters.page = 1;
+  load();
 }
-async function scrollToBottom() {
-  await nextTick();
-  if (chatLog.value) chatLog.value.scrollTop = chatLog.value.scrollHeight;
+
+function goToPage(page) {
+  filters.page = page;
+  load();
 }
-async function selectConversation(id) {
-  if (busy.value) return;
-  chatController?.abort();
-  chatController = new AbortController();
-  const signal = chatController.signal;
-  const version = ++generation;
-  selectedId.value = id;
-  conversation.value = null;
-  summary.value = "";
+
+async function openConversation(item) {
+  detailOpen.value = true;
+  detailLoading.value = true;
+  detailError.value = "";
+  selected.value = null;
   messages.value = [];
-  chatLoading.value = true;
-  chatError.value = "";
-  actionError.value = "";
-  historyPage.value = 1;
-  historyLoading.value = false;
-  refreshActive.value = false;
+  relatedRequests.value = null;
   try {
-    const [detail, history] = await Promise.all([api.getConversation(id, { signal }), latestMessages(id, signal)]);
-    if (version !== generation || disposed) return;
-    conversation.value = detail.data;
-    summary.value = detail.summary || "";
-    messages.value = mergeMessages([], history.result.data);
-    historyPage.value = history.page;
-    updateList(detail.data);
-    await scrollToBottom();
-  } catch (error) {
-    if (version === generation && !signal.aborted) chatError.value = error.message;
+    const result = await api.getConversation(item.id);
+    selected.value = result.data;
+    messages.value = result.messages || [];
+    relatedRequests.value = result.related_requests || null;
+  } catch (detailLoadError) {
+    detailError.value = detailLoadError.message;
   } finally {
-    if (version === generation) chatLoading.value = false;
+    detailLoading.value = false;
   }
 }
-async function loadOlder() {
-  if (historyLoading.value || historyPage.value <= 1 || busy.value) return;
-  const version = generation;
-  const oldHeight = chatLog.value?.scrollHeight || 0;
-  historyLoading.value = true;
+
+async function openQuote(item) {
+  detailOpen.value = true;
+  detailLoading.value = true;
+  detailError.value = "";
+  selected.value = null;
+  messages.value = [];
+  relatedRequests.value = null;
   try {
-    const result = await api.getMessages(selectedId.value, { page: historyPage.value - 1, per_page: 50, signal: chatController.signal });
-    if (version !== generation || disposed) return;
-    messages.value = mergeMessages(messages.value, result.data);
-    historyPage.value--;
-    chatError.value = "";
-    await nextTick();
-    if (chatLog.value) chatLog.value.scrollTop += chatLog.value.scrollHeight - oldHeight;
-  } catch (error) {
-    if (version === generation && !disposed) chatError.value = error.message;
-  } finally { if (version === generation) historyLoading.value = false; }
+    const result = await api.getFlightRequest(item.id);
+    selected.value = result.data;
+  } catch (detailLoadError) {
+    detailError.value = detailLoadError.message;
+  } finally {
+    detailLoading.value = false;
+  }
 }
-async function refreshChat() {
-  if (!conversation.value || chatLoading.value || busy.value || refreshActive.value || historyLoading.value) return;
-  const version = generation;
-  const id = selectedId.value;
-  const signal = chatController.signal;
-  const atBottom = !chatLog.value || chatLog.value.scrollHeight - chatLog.value.scrollTop - chatLog.value.clientHeight < 80;
-  refreshActive.value = true;
+
+async function openRequest(item) {
+  detailOpen.value = true;
+  detailLoading.value = true;
+  detailError.value = "";
+  selected.value = null;
+  messages.value = [];
+  relatedRequests.value = null;
   try {
-    const detail = await api.getConversation(id, { signal });
-    const updated = [];
-    let lastPage = historyPage.value;
-    for (let page = historyPage.value; page <= lastPage; page++) {
-      const result = await api.getMessages(id, { page, per_page: 50, signal });
-      updated.push(...result.data);
-      lastPage = result.meta?.last_page || 1;
-    }
-    if (version !== generation || disposed || busy.value) return;
-    conversation.value = detail.data;
-    summary.value = detail.summary || "";
-    messages.value = mergeMessages(messages.value, updated);
-    updateList(detail.data);
-    chatError.value = "";
-    if (atBottom) await scrollToBottom();
-  } catch (error) {
-    if (version === generation && !signal.aborted && !disposed) chatError.value = error.message;
-  } finally { if (version === generation) refreshActive.value = false; }
+    const result = await activeRequestConfig.value.getDetail(item.id);
+    selected.value = result.data;
+  } catch (detailLoadError) {
+    detailError.value = detailLoadError.message;
+  } finally {
+    detailLoading.value = false;
+  }
 }
-async function send() {
-  const body = draft.value.trim();
-  if (!body || body.length > 4096 || busy.value || !conversation.value || refreshActive.value) return;
-  const id = selectedId.value;
-  const originalDraft = draft.value;
-  sending.value = true;
-  actionError.value = "";
+
+function closeDetail() {
+  detailOpen.value = false;
+  selected.value = null;
+  messages.value = [];
+  relatedRequests.value = null;
+  detailError.value = "";
+}
+
+async function toggleHumanControl() {
+  if (!selected.value) {
+    return;
+  }
+  const human = isHuman(selected.value);
+  const confirmed = window.confirm(human ? "¿Regresar esta conversación al bot?" : "¿Pasar esta conversación a asesor?");
+  if (!confirmed) {
+    return;
+  }
+  statusSaving.value = true;
+  detailError.value = "";
   try {
-    const result = await api.sendMessage(id, body);
-    if (disposed) return;
-    messages.value = mergeMessages(messages.value, [result.data]);
-    if (drafts.value[id] === originalDraft) drafts.value[id] = "";
-    updateList({ id, last_message: result.data, last_message_at: result.data.sent_at });
-    await scrollToBottom();
-  } catch (error) { if (!disposed) actionError.value = error.message; }
-  finally { sending.value = false; }
+    await (human ? api.returnToBot(selected.value.id) : api.transferToHuman(selected.value.id));
+    const result = await api.getConversation(selected.value.id);
+    selected.value = result.data;
+    messages.value = result.messages || messages.value;
+    await load();
+  } catch (toggleError) {
+    detailError.value = toggleError.message;
+  } finally {
+    statusSaving.value = false;
+  }
 }
-async function toggleControl() {
-  if (!conversation.value || busy.value || refreshActive.value) return;
-  const id = conversation.value.id;
-  controlling.value = true;
-  actionError.value = "";
+
+async function changeStatus(status) {
+  if (!selected.value || !activeRequestConfig.value || selected.value.status === status) {
+    return;
+  }
+  if (!window.confirm(`¿Cambiar estado a ${status}?`)) {
+    return;
+  }
+  statusSaving.value = true;
+  detailError.value = "";
   try {
-    await (human.value ? api.returnToBot(id) : api.takeoverConversation(id));
-    const result = await api.getConversation(id);
-    if (disposed) return;
-    conversation.value = { ...conversation.value, ...result.data };
-    summary.value = result.summary || "";
-    updateList(result.data);
-  } catch (error) { if (!disposed) actionError.value = error.message; }
-  finally { controlling.value = false; }
+    const result = await activeRequestConfig.value.updateStatus(selected.value.id, status);
+    selected.value = result.data;
+    await load();
+  } catch (statusError) {
+    detailError.value = statusError.message;
+  } finally {
+    statusSaving.value = false;
+  }
 }
-onMounted(() => {
-  loadConversations();
-  pollTimer = setInterval(() => { if (!document.hidden) refreshChat(); }, 15000);
-});
-onBeforeUnmount(() => {
-  disposed = true;
-  generation++;
-  clearInterval(pollTimer);
-  listController?.abort();
-  chatController?.abort();
-});
+
+function openRow(item) {
+  if (currentSection.value === "conversations") {
+    openConversation(item);
+  } else if (currentSection.value === "quotes") {
+    openQuote(item);
+  } else if (activeRequestConfig.value) {
+    openRequest(item);
+  }
+}
+
+watch(
+  () => props.section,
+  () => {
+    resetFilters();
+    closeDetail();
+    load();
+  },
+);
+
+onMounted(load);
+onBeforeUnmount(() => controller?.abort());
 </script>
 
 <template>
   <div class="whatsapp-page">
     <header class="page-heading">
-      <div><p class="eyebrow">Centro de atención</p><h1>WhatsApp</h1><p class="muted">Conversaciones y solicitudes de vuelo en un solo lugar.</p></div>
-      <BaseButton v-if="activeTab === 'conversations'" variant="secondary" :disabled="listLoading || busy" @click="loadConversations">{{ listLoading ? "Actualizando…" : "Actualizar conversaciones" }}</BaseButton>
+      <div>
+        <p class="eyebrow">Admin WhatsApp</p>
+        <h1>{{ pageTitle }}</h1>
+        <p class="muted">{{ pageDescription }}</p>
+      </div>
+      <BaseButton variant="secondary" :disabled="loading" @click="load">
+        {{ loading ? "Actualizando..." : "Actualizar" }}
+      </BaseButton>
     </header>
+
     <nav class="section-tabs" aria-label="Secciones de WhatsApp">
-      <button type="button" :aria-pressed="activeTab === 'conversations'" :class="{ active: activeTab === 'conversations' }" @click="activeTab = 'conversations'">Conversaciones</button>
-      <button type="button" :aria-pressed="activeTab === 'quotes'" :class="{ active: activeTab === 'quotes' }" @click="activeTab = 'quotes'">Cotizaciones</button>
+      <button
+        v-for="sectionItem in sections"
+        :key="sectionItem.id"
+        type="button"
+        :class="{ active: currentSection === sectionItem.id }"
+        @click="router.push(sectionItem.to)"
+      >
+        {{ sectionItem.label }}
+      </button>
     </nav>
-    <nav v-if="activeTab === 'conversations'" class="filters" aria-label="Filtrar conversaciones">
-      <button v-for="item in filters" :key="item.id" type="button" :aria-pressed="filter === item.id" :class="{ active: filter === item.id }" @click="filter = item.id">{{ item.label }}</button>
-    </nav>
-    <WhatsAppQuotesPanel v-if="activeTab === 'quotes'" />
-    <div v-else class="workspace">
-      <section class="conversation-list" aria-label="Conversaciones" :aria-busy="listLoading">
-        <div class="list-heading"><h2>Conversaciones <span>{{ filtered.length }}</span></h2><label class="sr-only" for="whatsapp-search">Buscar por nombre, teléfono o mensaje</label><input id="whatsapp-search" v-model="search" type="search" placeholder="Nombre, teléfono o mensaje"></div>
-        <div v-if="listError" class="error" role="alert">{{ listError }}<button type="button" @click="loadConversations">Reintentar</button></div>
-        <p v-if="listLoading" class="empty" role="status">Cargando conversaciones…</p>
-        <p v-else-if="!filtered.length && !listError" class="empty">{{ search || filter !== 'all' ? "No hay coincidencias con estos filtros." : "Aún no hay conversaciones de WhatsApp." }}</p>
-        <div class="conversation-items">
-          <button v-for="item in paginatedItems" :key="item.id" type="button" class="conversation-item" :class="{ selected: selectedId === item.id }" :aria-pressed="selectedId === item.id" :disabled="busy" @click="selectConversation(item.id)">
-            <span class="contact-title">{{ item.contact?.name || item.contact?.phone_number || 'Sin nombre' }}</span>
-            <span class="muted">{{ item.contact?.phone_number }}</span>
-            <span class="preview">{{ item.last_message?.body || (item.last_message ? `[${item.last_message.type}]` : "Sin mensajes") }}</span>
-            <span class="badge" :class="{ human: isHuman(item) }">{{ conversationLabel(item) }}</span>
-            <span class="activity">{{ formatTimestamp(item.last_message_at) }} · {{ isHuman(item) ? 'Humano' : 'Bot' }}</span>
-          </button>
+
+    <section v-if="currentSection === 'summary'" class="summary-grid" :aria-busy="loading">
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <p v-else-if="loading" class="empty" role="status">Cargando resumen...</p>
+      <template v-else-if="dashboard">
+        <article class="metric-card">
+          <span>Conversaciones</span>
+          <strong>{{ dashboard.conversations?.total ?? 0 }}</strong>
+          <p>{{ dashboard.conversations?.active ?? 0 }} activas · {{ dashboard.conversations?.human ?? 0 }} en humano</p>
+        </article>
+        <article class="metric-card">
+          <span>Cotizaciones</span>
+          <strong>{{ dashboard.flight_quotes?.total ?? 0 }}</strong>
+          <p>Solicitudes de vuelo capturadas.</p>
+        </article>
+        <article class="metric-card">
+          <span>Partes</span>
+          <strong>{{ dashboard.parts?.total ?? 0 }}</strong>
+          <p>{{ dashboard.parts?.new ?? 0 }} nuevas · {{ dashboard.parts?.in_progress ?? 0 }} en atención</p>
+        </article>
+        <article class="metric-card">
+          <span>Motores</span>
+          <strong>{{ dashboard.engines?.total ?? 0 }}</strong>
+          <p>{{ dashboard.engines?.new ?? 0 }} nuevas · {{ dashboard.engines?.in_progress ?? 0 }} en atención</p>
+        </article>
+        <article class="metric-card">
+          <span>Soporte</span>
+          <strong>{{ dashboard.support?.total ?? 0 }}</strong>
+          <p>{{ dashboard.support?.new ?? 0 }} nuevas · {{ dashboard.support?.in_progress ?? 0 }} en atención</p>
+        </article>
+        <article class="metric-card">
+          <span>Solicitudes de asesor</span>
+          <strong>{{ dashboard.advisor?.total ?? 0 }}</strong>
+          <p>{{ dashboard.advisor?.new ?? 0 }} nuevas · {{ dashboard.advisor?.in_progress ?? 0 }} en atención</p>
+        </article>
+      </template>
+      <p v-else class="empty">No hay datos de resumen disponibles.</p>
+    </section>
+
+    <template v-else>
+      <form v-if="currentSection !== 'history'" class="filters" @submit.prevent="applyFilters">
+        <label v-for="key in filterKeys()" :key="key">
+          <span>{{ labels[key] }}</span>
+          <select v-if="key === 'status'" v-model="filters[key]">
+            <option value="">Todos</option>
+            <option v-for="status in statuses" :key="status" :value="status">{{ status }}</option>
+          </select>
+          <select v-else-if="key === 'transferred_to_human'" v-model="filters[key]">
+            <option value="">Todos</option>
+            <option value="0">Bot</option>
+            <option value="1">Humano</option>
+          </select>
+          <select v-else-if="key === 'transferred'" v-model="filters[key]">
+            <option value="">Todos</option>
+            <option value="1">Transferido</option>
+          </select>
+          <input v-else-if="key.startsWith('date')" v-model="filters[key]" type="date">
+          <input v-else v-model.trim="filters[key]" type="search" :placeholder="labels[key]">
+        </label>
+        <label>
+          <span>Por página</span>
+          <select v-model.number="filters.per_page">
+            <option v-for="amount in perPageOptions" :key="amount" :value="amount">{{ amount }}</option>
+          </select>
+        </label>
+        <div class="filter-actions">
+          <BaseButton type="submit" :disabled="loading">Filtrar</BaseButton>
+          <BaseButton variant="secondary" :disabled="loading" @click="resetFilters(); load()">Limpiar</BaseButton>
         </div>
-        <footer v-if="totalPages > 1" class="pagination"><BaseButton variant="secondary" :disabled="currentPage <= 1" @click="prevPage">Anterior</BaseButton><span>{{ currentPage }} / {{ totalPages }}</span><BaseButton variant="secondary" :disabled="currentPage >= totalPages" @click="nextPage">Siguiente</BaseButton></footer>
+      </form>
+
+      <section class="table-card" :aria-busy="loading">
+        <p v-if="error" class="error" role="alert">{{ error }}</p>
+        <p v-else-if="loading" class="empty" role="status">Cargando registros...</p>
+        <p v-else-if="!hasRows" class="empty">
+          {{
+            currentSection === "conversations"
+              ? "No hay conversaciones con estos filtros."
+              : currentSection === "quotes"
+                ? "No hay cotizaciones de WhatsApp registradas."
+                : currentSection === "history"
+                  ? "No hay historial administrativo registrado."
+                  : activeRequestConfig.empty
+          }}
+        </p>
+        <div v-else class="table-scroll">
+          <table>
+            <thead>
+              <tr v-if="currentSection === 'conversations'">
+                <th>Contacto</th><th>Teléfono</th><th>Sección activa</th><th>Estado</th><th>Último mensaje</th><th>Última actividad</th><th>Atención</th><th>Acciones</th>
+              </tr>
+              <tr v-else-if="currentSection === 'quotes'">
+                <th>ID</th><th>Cliente</th><th>Ruta</th><th>Pasajeros</th><th>Aeronave</th><th>Precio aproximado</th><th>Estado</th><th>Fecha</th><th>Ver</th>
+              </tr>
+              <tr v-else-if="currentSection === 'history'">
+                <th>Tipo</th><th>Contacto</th><th>Dirección</th><th>Mensaje</th><th>Estado</th><th>Fecha</th>
+              </tr>
+              <tr v-else>
+                <th v-for="[, label] in activeRequestConfig.columns" :key="label">{{ label }}</th><th>Ver</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in rows" :key="item.id">
+                <template v-if="currentSection === 'conversations'">
+                  <td>{{ item.contact?.name || "—" }}</td>
+                  <td>{{ item.contact?.phone_number || "—" }}</td>
+                  <td>{{ item.active_section || "—" }}</td>
+                  <td>{{ item.state || "—" }}</td>
+                  <td class="truncate">{{ item.last_message?.body || "—" }}</td>
+                  <td>{{ formatDate(item.last_message_at) }}</td>
+                  <td><span class="badge" :class="{ human: isHuman(item) }">{{ isHuman(item) ? "Humano" : "Bot" }}</span></td>
+                  <td><button class="link-button" type="button" @click="openRow(item)">Ver</button></td>
+                </template>
+                <template v-else-if="currentSection === 'quotes'">
+                  <td>{{ item.id }}</td>
+                  <td>{{ item.client_name || item.contact?.name || item.contact?.phone_number || "—" }}</td>
+                  <td>{{ item.route || "—" }}</td>
+                  <td>{{ item.passengers ?? "—" }}</td>
+                  <td>{{ item.aircraft_name || item.selected_aircraft || "—" }}</td>
+                  <td>{{ formatValue(item, "estimated_price") }}</td>
+                  <td><span class="badge">{{ item.status || "—" }}</span></td>
+                  <td>{{ formatDate(item.created_at) }}</td>
+                  <td><button class="link-button" type="button" @click="openRow(item)">Ver</button></td>
+                </template>
+                <template v-else-if="currentSection === 'history'">
+                  <td>{{ item.type }}</td>
+                  <td>{{ item.contact?.name || item.contact?.phone_number || "—" }}</td>
+                  <td>{{ item.direction || "—" }}</td>
+                  <td class="truncate">{{ item.body || "—" }}</td>
+                  <td>{{ item.status || "—" }}</td>
+                  <td>{{ formatDate(item.created_at) }}</td>
+                </template>
+                <template v-else>
+                  <td v-for="[key] in activeRequestConfig.columns" :key="key">
+                    <span v-if="key === 'status'" class="badge">{{ item.status }}</span>
+                    <span v-else>{{ formatValue(item, key) }}</span>
+                  </td>
+                  <td><button class="link-button" type="button" @click="openRow(item)">Ver</button></td>
+                </template>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <footer v-if="meta.total" class="pagination">
+          <span>Página {{ meta.current_page || filters.page }} de {{ meta.last_page || 1 }} · {{ meta.total }} registros</span>
+          <div>
+            <BaseButton variant="secondary" :disabled="loading || (meta.current_page || filters.page) <= 1" @click="goToPage((meta.current_page || filters.page) - 1)">Anterior</BaseButton>
+            <BaseButton variant="secondary" :disabled="loading || (meta.current_page || filters.page) >= (meta.last_page || 1)" @click="goToPage((meta.current_page || filters.page) + 1)">Siguiente</BaseButton>
+          </div>
+        </footer>
       </section>
-      <section class="chat-panel" aria-label="Chat" :aria-busy="chatLoading">
-        <p v-if="!selectedId" class="empty welcome">Selecciona una conversación para ver sus mensajes y la solicitud de vuelo.</p>
-        <p v-else-if="chatLoading" class="empty" role="status">Cargando conversación…</p>
-        <template v-else>
-          <div v-if="chatError" class="error" role="alert">{{ chatError }}<button type="button" :disabled="refreshActive" @click="conversation ? refreshChat() : selectConversation(selectedId)">Reintentar</button></div>
-          <template v-if="conversation">
-            <header class="chat-heading"><div><h2>{{ conversation.contact?.name || conversation.contact?.phone_number }}</h2><span class="badge" :class="{ human }">{{ human ? 'Atención humana' : 'Bot activo' }}</span></div><BaseButton variant="secondary" :disabled="busy || refreshActive" @click="toggleControl">{{ controlling ? 'Guardando…' : human ? 'Devolver al bot' : 'Tomar conversación' }}</BaseButton></header>
-            <div class="chat-toolbar"><span class="muted">Fechas y horas de mensajes en tu zona local.</span><button type="button" :disabled="refreshActive || busy" @click="refreshChat">{{ refreshActive ? 'Actualizando…' : 'Actualizar chat' }}</button></div>
-            <div ref="chatLog" class="messages" role="log" aria-label="Historial de mensajes" aria-live="polite">
-              <BaseButton v-if="historyPage > 1" variant="secondary" :disabled="historyLoading || busy || refreshActive" @click="loadOlder">{{ historyLoading ? 'Cargando…' : 'Cargar mensajes anteriores' }}</BaseButton>
-              <p v-if="!messages.length" class="empty">Esta conversación aún no tiene mensajes.</p>
-              <article v-for="message in messages" :key="message.id" class="message" :class="{ outbound: message.direction === 'outbound' }">
-                <span class="message-author">{{ message.direction === 'outbound' ? 'Sky Group' : conversation.contact?.name || 'Cliente' }}</span>
-                <p>{{ message.body || `Mensaje de tipo ${message.type}` }}</p>
-                <footer><time :datetime="message.sent_at">{{ formatTimestamp(message.sent_at) }}</time><span v-if="message.direction === 'outbound' && message.status" :class="{ failed: message.status === 'failed' }">{{ deliveryLabels[message.status] || message.status }}</span></footer>
-                <small v-if="message.status === 'failed' && message.error_message" class="failed">{{ message.error_message }}</small>
-              </article>
-            </div>
-            <form class="composer" @submit.prevent="send">
-              <p v-if="!human" class="muted">El bot está activo. Puedes tomar la conversación para responder manualmente.</p>
-              <p v-if="actionError" class="error" role="alert">{{ actionError }}</p>
-              <label for="whatsapp-reply">Mensaje</label><textarea id="whatsapp-reply" v-model="draft" rows="3" maxlength="4096" :disabled="sending" placeholder="Escribe tu respuesta…"></textarea>
-              <div class="composer-actions"><span class="muted">{{ draft.length }} / 4096</span><BaseButton type="submit" :disabled="!draft.trim() || busy || refreshActive">{{ sending ? 'Enviando…' : 'Enviar mensaje' }}</BaseButton></div>
-            </form>
-          </template>
+    </template>
+
+    <div v-if="detailOpen" class="drawer-overlay" @click.self="closeDetail">
+      <aside class="drawer" aria-live="polite">
+        <header class="drawer-head">
+          <div>
+            <p class="eyebrow">Detalle</p>
+            <h2>{{ currentSection === "conversations" ? "Conversación" : currentSection === "quotes" ? "Cotización" : activeRequestConfig?.title }}</h2>
+          </div>
+          <button type="button" class="close-button" @click="closeDetail">Cerrar</button>
+        </header>
+
+        <p v-if="detailLoading" class="empty">Cargando detalle...</p>
+        <p v-else-if="detailError" class="error" role="alert">{{ detailError }}</p>
+        <template v-else-if="selected">
+          <section v-if="currentSection === 'conversations'" class="detail-grid">
+            <span>Contacto</span><strong>{{ selected.contact?.name || "—" }}</strong>
+            <span>Teléfono</span><strong>{{ selected.contact?.phone_number || "—" }}</strong>
+            <span>Conversation ID</span><strong>{{ selected.id }}</strong>
+            <span>Estado</span><strong>{{ selected.state || "—" }}</strong>
+            <span>Sección activa</span><strong>{{ selected.active_section || "—" }}</strong>
+            <span>Atención</span><strong>{{ isHuman(selected) ? "Humano" : "Bot" }}</strong>
+            <span>Creación</span><strong>{{ formatDate(selected.created_at) }}</strong>
+            <span>Última actividad</span><strong>{{ formatDate(selected.last_message_at) }}</strong>
+          </section>
+
+          <section v-else-if="currentSection === 'quotes'" class="detail-grid">
+            <span>ID</span><strong>{{ selected.id }}</strong>
+            <span>Cliente</span><strong>{{ selected.client_name || selected.contact?.name || "—" }}</strong>
+            <span>Ruta</span><strong>{{ selected.route || "—" }}</strong>
+            <span>Pasajeros</span><strong>{{ selected.passengers ?? "—" }}</strong>
+            <span>Aeronave</span><strong>{{ selected.aircraft_name || selected.selected_aircraft || "—" }}</strong>
+            <span>Precio aproximado</span><strong>{{ formatValue(selected, "estimated_price") }}</strong>
+            <span>Estado</span><strong>{{ selected.status || "—" }}</strong>
+            <span>Fecha</span><strong>{{ formatDate(selected.created_at) }}</strong>
+          </section>
+
+          <section v-else class="detail-grid">
+            <template v-for="[key, label] in activeRequestConfig.detailFields" :key="key">
+              <span>{{ label }}</span><strong>{{ formatValue(selected, key) }}</strong>
+            </template>
+            <span>Contacto</span><strong>{{ selected.contact?.name || selected.contact?.phone_number || "—" }}</strong>
+          </section>
+
+          <div v-if="currentSection === 'conversations'" class="drawer-actions">
+            <BaseButton :disabled="statusSaving" @click="toggleHumanControl">
+              {{ statusSaving ? "Guardando..." : isHuman(selected) ? "Regresar al bot" : "Pasar a asesor" }}
+            </BaseButton>
+          </div>
+
+          <label v-if="activeRequestConfig" class="status-select">
+            <span>Cambiar status</span>
+            <select :value="selected.status" :disabled="statusSaving" @change="changeStatus($event.target.value)">
+              <option v-for="status in statuses" :key="status" :value="status">{{ status }}</option>
+            </select>
+          </label>
+
+          <section v-if="relatedRequests" class="related">
+            <h3>Solicitudes relacionadas</h3>
+            <p v-for="(items, key) in relatedRequests" :key="key">{{ key }}: {{ items.length }}</p>
+          </section>
+
+          <section v-if="messages.length" class="timeline">
+            <h3>Mensajes</h3>
+            <article v-for="message in messages" :key="message.id" class="message" :class="{ outbound: message.direction === 'outbound' }">
+              <span>{{ message.direction === "outbound" ? "Sky Group" : "Cliente" }}</span>
+              <p>{{ message.body || `Mensaje de tipo ${message.type}` }}</p>
+              <time>{{ formatDate(message.created_at || message.sent_at) }}</time>
+            </article>
+          </section>
         </template>
-      </section>
-      <WhatsAppFlightPanel v-if="conversation && !chatLoading" :conversation="conversation" :summary="summary" />
-      <aside v-else class="empty flight-placeholder">Los datos del cliente y del vuelo aparecerán aquí.</aside>
+      </aside>
     </div>
   </div>
 </template>
@@ -266,35 +715,51 @@ onBeforeUnmount(() => {
 <style scoped>
 .whatsapp-page { display: flex; flex-direction: column; gap: 18px; color: var(--text-main); }
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-h1 { margin: 4px 0; font-size: 1.8rem; color: var(--text-strong); } h2 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+h1 { margin: 4px 0; font-size: 1.8rem; color: var(--text-strong); }
+h2, h3 { margin: 0; color: var(--text-strong); }
 .eyebrow { color: var(--primary); text-transform: uppercase; font-size: .72rem; font-weight: 800; letter-spacing: .12em; margin: 0; }
-.muted { color: var(--text-muted); font-size: .82rem; } .page-heading p { margin: 6px 0; }
-.section-tabs { display: flex; width: fit-content; padding: 4px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-surface-solid); }
-.section-tabs button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: .84rem; font-weight: 700; }
+.muted { color: var(--text-muted); font-size: .86rem; margin: 6px 0 0; }
+.section-tabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 4px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-surface-solid); }
+.section-tabs button { min-height: 36px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: .82rem; font-weight: 750; }
 .section-tabs button.active { color: var(--primary); background: var(--primary-soft); }
-.filters { display: flex; flex-wrap: wrap; gap: 8px; }
-.filters button { padding: 10px 16px; border-radius: 20px; background: var(--bg-surface-solid); color: var(--text-muted); border: 1px solid var(--border-color); cursor: pointer; font: inherit; font-size: .85rem; }
-.filters button.active { color: var(--primary); background: var(--primary-soft); border-color: var(--primary); }
-.workspace { display: grid; grid-template-columns: minmax(230px, .9fr) minmax(320px, 1.7fr) minmax(260px, 1fr); min-height: 650px; height: calc(100dvh - 250px); max-height: 1000px; background: var(--bg-surface-solid); border: 1px solid var(--border-color); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
-.conversation-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border-color); }
-.list-heading { padding: 18px; } .list-heading h2 { margin-bottom: 14px; } h2 span { color: var(--text-muted); font-weight: 400; }
-input, textarea { width: 100%; border: 1px solid var(--border-strong); background: var(--bg-soft); border-radius: 12px; padding: 12px; color: var(--text-main); font: inherit; font-size: .85rem; } textarea { resize: vertical; max-height: 180px; }
-button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.conversation-items { flex: 1; overflow: auto; }
-.conversation-item { display: flex; flex-direction: column; text-align: left; width: 100%; gap: 7px; padding: 16px 18px; background: transparent; border: 0; border-bottom: 1px solid var(--border-color); color: var(--text-main); cursor: pointer; font: inherit; }
-.conversation-item:hover { background: var(--bg-hover); } .conversation-item.selected { background: var(--primary-soft); box-shadow: inset 3px 0 var(--primary); }
-.contact-title { font-weight: 750; overflow-wrap: anywhere; }.preview { font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; color: var(--text-muted); }
-.activity { font-size: .7rem; color: var(--text-muted); }.badge { width: fit-content; padding: 4px 8px; border-radius: 10px; background: var(--bg-muted); color: var(--primary); font-size: .72rem; font-weight: 700; }.badge.human { color: var(--warning); }
-.pagination { padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 5px; font-size: .75rem; }.pagination :deep(button) { font-size: .72rem; padding: 0 8px; }
-.chat-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--bg-soft); border-right: 1px solid var(--border-color); }
-.chat-heading { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 18px; background: var(--bg-surface-solid); }.chat-heading .badge { display: inline-block; margin-top: 8px; }.chat-heading :deep(button) { font-size: .78rem; padding: 0 12px; flex-shrink: 0; }
-.chat-toolbar { display: flex; justify-content: space-between; gap: 8px; padding: 10px 18px; }.chat-toolbar button, .error button { background: transparent; border: 0; color: var(--primary); cursor: pointer; text-decoration: underline; }
-.messages { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 20px; }
-.message { max-width: 86%; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 16px 16px 16px 4px; background: var(--bg-surface-solid); box-shadow: var(--shadow-sm); overflow-wrap: anywhere; }
-.message.outbound { align-self: flex-end; background: var(--primary-soft); border-radius: 16px 16px 4px 16px; }.message p { white-space: pre-wrap; font-size: .88rem; line-height: 1.55; margin: 8px 0; }.message-author { font-size: .72rem; font-weight: 750; color: var(--primary); }.message footer { display: flex; flex-wrap: wrap; gap: 10px; font-size: .67rem; color: var(--text-muted); }
-.composer { padding: 16px 18px; border-top: 1px solid var(--border-color); background: var(--bg-surface-solid); }.composer label { display: block; font-size: .8rem; margin-bottom: 8px; font-weight: 700; }.composer-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }.composer p { margin: 0 0 10px; }
-.empty { padding: 24px; color: var(--text-muted); text-align: center; font-size: .9rem; line-height: 1.6; }.welcome { margin: auto; max-width: 350px; }.error { padding: 12px; color: var(--danger); font-size: .85rem; background: var(--bg-surface-solid); overflow-wrap: anywhere; }.failed { color: var(--danger); }
-.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-@media (max-width: 1350px) { .workspace { grid-template-columns: 240px minmax(0, 1fr); height: auto; max-height: none; }.conversation-list, .chat-panel { height: 700px; }.workspace :deep(.flight-panel), .flight-placeholder { grid-column: 1 / -1; border-top: 1px solid var(--border-color); }.chat-heading { flex-wrap: wrap; } }
-@media (max-width: 700px) { .workspace { grid-template-columns: minmax(0, 1fr); }.conversation-list { height: 370px; border-right: 0; border-bottom: 1px solid var(--border-color); }.chat-panel { height: 680px; border-right: 0; }.chat-toolbar { flex-wrap: wrap; }.messages { padding: 14px; }.message { max-width: 94%; }.page-heading :deep(button) { width: 100%; } }
+.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.metric-card, .table-card, .filters { border: 1px solid var(--border-color); border-radius: 16px; background: var(--bg-surface-solid); box-shadow: var(--shadow-sm); }
+.metric-card { padding: 18px; }
+.metric-card span { color: var(--text-muted); font-weight: 800; font-size: .78rem; text-transform: uppercase; }
+.metric-card strong { display: block; margin: 10px 0; color: var(--text-strong); font-size: 2rem; }
+.metric-card p { margin: 0; color: var(--text-muted); font-size: .86rem; }
+.filters { display: grid; grid-template-columns: repeat(4, minmax(160px, 1fr)); gap: 12px; padding: 14px; }
+.filters label, .status-select { display: flex; flex-direction: column; gap: 7px; font-size: .78rem; font-weight: 800; color: var(--text-muted); }
+input, select { width: 100%; border: 1px solid var(--border-strong); background: var(--bg-soft); border-radius: 12px; padding: 11px; color: var(--text-main); font: inherit; font-size: .86rem; }
+.filter-actions { display: flex; gap: 8px; align-items: end; }
+.table-card { overflow: hidden; }
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 980px; }
+th, td { padding: 13px 14px; border-bottom: 1px solid var(--border-color); text-align: left; vertical-align: middle; font-size: .84rem; }
+th { color: var(--text-muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; background: var(--bg-soft); }
+.truncate { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge { display: inline-flex; align-items: center; min-height: 24px; padding: 4px 8px; border-radius: 10px; background: var(--primary-soft); color: var(--primary); font-size: .72rem; font-weight: 800; }
+.badge.human { color: var(--warning); background: rgba(245, 158, 11, .12); }
+.link-button, .close-button { border: 0; background: transparent; color: var(--primary); font: inherit; font-weight: 800; cursor: pointer; }
+.pagination { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 14px; color: var(--text-muted); font-size: .84rem; }
+.pagination div { display: flex; gap: 8px; }
+.empty, .error { margin: 0; padding: 24px; text-align: center; color: var(--text-muted); }
+.error { color: var(--danger); background: rgba(220, 38, 38, .06); text-align: left; }
+.drawer-overlay { position: fixed; inset: 0; z-index: 80; display: flex; justify-content: flex-end; background: rgba(15, 23, 42, .38); }
+.drawer { width: min(760px, 100%); height: 100%; overflow-y: auto; padding: 22px; background: var(--bg-surface-solid); box-shadow: -20px 0 40px rgba(15, 23, 42, .18); }
+.drawer-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); }
+.detail-grid { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 10px 14px; padding: 18px 0; }
+.detail-grid span { color: var(--text-muted); font-size: .78rem; font-weight: 800; }
+.detail-grid strong { overflow-wrap: anywhere; font-size: .9rem; }
+.drawer-actions, .status-select, .related, .timeline { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+.related p { margin: 8px 0 0; color: var(--text-muted); }
+.timeline { display: flex; flex-direction: column; gap: 12px; }
+.message { max-width: 86%; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 14px 14px 14px 4px; background: var(--bg-soft); }
+.message.outbound { align-self: flex-end; border-radius: 14px 14px 4px 14px; background: var(--primary-soft); }
+.message span { color: var(--primary); font-size: .72rem; font-weight: 800; }
+.message p { margin: 8px 0; white-space: pre-wrap; line-height: 1.5; }
+.message time { color: var(--text-muted); font-size: .72rem; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 1180px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .summary-grid, .filters { grid-template-columns: 1fr; } .filter-actions, .pagination { flex-direction: column; align-items: stretch; } .detail-grid { grid-template-columns: 1fr; } .message { max-width: 96%; } }
 </style>

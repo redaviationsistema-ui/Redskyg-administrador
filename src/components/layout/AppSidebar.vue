@@ -14,12 +14,12 @@ const emit = defineEmits(["close"]);
 const route = useRoute();
 const openQuotesWorkspace = ref(true);
 const openSalesFollowUp = ref(true);
+const openWhatsAppWorkspace = ref(true);
 
 const mainLinks = [
   { to: "/aircraft", label: "Aircraft", hint: "Fleet" },
   { to: "/airports", label: "Airports", hint: "Directory" },
   { to: "/comercial", label: "Centro Comercial", hint: "Pipeline y ventas" },
-  { to: "/whatsapp", label: "WhatsApp", hint: "Conversaciones y vuelos", icon: "chat" },
   { to: "/correos-masivos", label: "Correos masivos", hint: "Campaigns" },
   { to: "/", label: "Dashboard", hint: "Overview" },
   { to: "/admin/encuestas", label: "Encuestas", hint: "Voz del cliente" },
@@ -39,6 +39,17 @@ const quoteLinks = [
 
 const quoteSectionActive = computed(() => route.path.startsWith("/quotes"));
 const salesSectionActive = computed(() => route.path === "/quotes/follow-up");
+const whatsAppSectionActive = computed(() => route.path.startsWith("/whatsapp"));
+const whatsAppLinks = [
+  { to: "/whatsapp", label: "Resumen" },
+  { to: "/whatsapp/conversaciones", label: "Conversaciones" },
+  { to: "/whatsapp/cotizaciones", label: "Cotizaciones" },
+  { to: "/whatsapp/partes", label: "Partes y refacciones" },
+  { to: "/whatsapp/motores", label: "Motores" },
+  { to: "/whatsapp/soporte", label: "Atención / soporte" },
+  { to: "/whatsapp/asesores", label: "Solicitudes de asesor" },
+  { to: "/whatsapp/historial", label: "Historial" },
+];
 
 </script>
 
@@ -91,6 +102,32 @@ const salesSectionActive = computed(() => route.path === "/quotes/follow-up");
             </div>
           </RouterLink>
         </nav>
+      </div>
+
+      <div class="nav-section nav-section-quotes">
+        <button
+          class="section-toggle"
+          :class="{ active: whatsAppSectionActive }"
+          @click="openWhatsAppWorkspace = !openWhatsAppWorkspace"
+        >
+          <div class="nav-copy">
+            <strong>WhatsApp</strong>
+            <span>Conversaciones y solicitudes</span>
+          </div>
+          <span class="chevron">{{ openWhatsAppWorkspace ? "-" : "+" }}</span>
+        </button>
+
+        <div v-if="openWhatsAppWorkspace" class="submenu">
+          <RouterLink
+            v-for="link in whatsAppLinks"
+            :key="link.to"
+            :to="link.to"
+            class="nav-sublink"
+            @click="emit('close')"
+          >
+            {{ link.label }}
+          </RouterLink>
+        </div>
       </div>
 
       <div class="nav-section nav-section-quotes">

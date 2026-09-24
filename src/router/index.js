@@ -33,9 +33,59 @@ const routes = [
 
       {
         path: "whatsapp",
+        name: "WhatsAppSummary",
+        component: () => import("@/views/WhatsApp/WhatsAppConversationsView.vue"),
+        meta: { requiresAdmin: true },
+        props: { section: "summary" },
+      },
+      {
+        path: "whatsapp/conversaciones",
         name: "WhatsAppConversations",
         component: () => import("@/views/WhatsApp/WhatsAppConversationsView.vue"),
         meta: { requiresAdmin: true },
+        props: { section: "conversations" },
+      },
+      {
+        path: "whatsapp/cotizaciones",
+        name: "WhatsAppQuotes",
+        component: () => import("@/views/WhatsApp/WhatsAppConversationsView.vue"),
+        meta: { requiresAdmin: true },
+        props: { section: "quotes" },
+      },
+      {
+        path: "whatsapp/partes",
+        name: "WhatsAppParts",
+        component: () => import("@/views/WhatsApp/WhatsAppConversationsView.vue"),
+        meta: { requiresAdmin: true },
+        props: { section: "parts" },
+      },
+      {
+        path: "whatsapp/motores",
+        name: "WhatsAppEngines",
+        component: () => import("@/views/WhatsApp/WhatsAppConversationsView.vue"),
+        meta: { requiresAdmin: true },
+        props: { section: "engines" },
+      },
+      {
+        path: "whatsapp/soporte",
+        name: "WhatsAppSupport",
+        component: () => import("@/views/WhatsApp/WhatsAppConversationsView.vue"),
+        meta: { requiresAdmin: true },
+        props: { section: "support" },
+      },
+      {
+        path: "whatsapp/asesores",
+        name: "WhatsAppAdvisor",
+        component: () => import("@/views/WhatsApp/WhatsAppConversationsView.vue"),
+        meta: { requiresAdmin: true },
+        props: { section: "advisor" },
+      },
+      {
+        path: "whatsapp/historial",
+        name: "WhatsAppHistory",
+        component: () => import("@/views/WhatsApp/WhatsAppConversationsView.vue"),
+        meta: { requiresAdmin: true },
+        props: { section: "history" },
       },
 
       // QUOTES LIST
