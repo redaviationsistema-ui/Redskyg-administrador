@@ -234,6 +234,25 @@ const routes = [
         props: true,
       },
       {
+        path: "admin/aircraft-sales",
+        name: "AircraftSalesGallery",
+        component: () => import("@/features/aircraft-sales/views/AircraftSalesGalleryView.vue"),
+        meta: { requiresAdmin: true },
+      },
+      {
+        path: "admin/aircraft-sales/inquiries",
+        name: "AircraftSalesInquiries",
+        component: () => import("@/features/aircraft-sales/views/AircraftSalesInquiriesView.vue"),
+        meta: { requiresAdmin: true },
+      },
+      {
+        path: "admin/aircraft-sales/:slug",
+        name: "AircraftSalesDetail",
+        component: () => import("@/features/aircraft-sales/views/AircraftSalesDetailView.vue"),
+        meta: { requiresAdmin: true },
+        props: true,
+      },
+      {
         path: "admin/encuestas",
         name: "AdminEncuestas",
         component: () => import("@/features/surveys/views/AdminEncuestasView.vue"),
@@ -242,6 +261,10 @@ const routes = [
       {
         path: "experiencias",
         redirect: "/admin/experiencias",
+      },
+      {
+        path: "aircraft-sales",
+        redirect: "/admin/aircraft-sales",
       },
       {
         path: "comercial",

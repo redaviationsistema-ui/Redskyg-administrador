@@ -15,6 +15,7 @@ const route = useRoute();
 const openQuotesWorkspace = ref(true);
 const openSalesFollowUp = ref(true);
 const openWhatsAppWorkspace = ref(true);
+const openAircraftSales = ref(true);
 
 const mainLinks = [
   { to: "/aircraft", label: "Aircraft", hint: "Fleet" },
@@ -26,6 +27,11 @@ const mainLinks = [
   { to: "/admin/experiencias", label: "Experiencias", hint: "Contenido web" },
   { to: "/lookbooks", label: "Lookbooks", hint: "Library" },
   { to: "/nautical-miles", label: "Nautical Miles", hint: "Distance tools" },
+];
+
+const aircraftSalesLinks = [
+  { to: "/admin/aircraft-sales", label: "Catalogo" },
+  { to: "/admin/aircraft-sales/inquiries", label: "Solicitudes" },
 ];
 
 const quoteLinks = [
@@ -40,6 +46,7 @@ const quoteLinks = [
 const quoteSectionActive = computed(() => route.path.startsWith("/quotes"));
 const salesSectionActive = computed(() => route.path === "/quotes/follow-up");
 const whatsAppSectionActive = computed(() => route.path.startsWith("/whatsapp"));
+const aircraftSalesSectionActive = computed(() => route.path.startsWith("/admin/aircraft-sales"));
 const whatsAppLinks = [
   { to: "/whatsapp", label: "Resumen" },
   { to: "/whatsapp/conversaciones", label: "Conversaciones" },
@@ -102,6 +109,32 @@ const whatsAppLinks = [
             </div>
           </RouterLink>
         </nav>
+      </div>
+
+      <div class="nav-section nav-section-quotes">
+        <button
+          class="section-toggle"
+          :class="{ active: aircraftSalesSectionActive }"
+          @click="openAircraftSales = !openAircraftSales"
+        >
+          <div class="nav-copy">
+            <strong>Aircraft Sales</strong>
+            <span>Catalogo y solicitudes</span>
+          </div>
+          <span class="chevron">{{ openAircraftSales ? "-" : "+" }}</span>
+        </button>
+
+        <div v-if="openAircraftSales" class="submenu">
+          <RouterLink
+            v-for="link in aircraftSalesLinks"
+            :key="link.to"
+            :to="link.to"
+            class="nav-sublink"
+            @click="emit('close')"
+          >
+            {{ link.label }}
+          </RouterLink>
+        </div>
       </div>
 
       <div class="nav-section nav-section-quotes">
