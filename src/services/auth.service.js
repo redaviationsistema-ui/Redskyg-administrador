@@ -1,5 +1,4 @@
 import { supabase, supabaseInventory } from '@/supabase'
-import { loginWhatsAppAdmin, logoutWhatsAppAdmin } from '@/services/whatsappAdminSession.service'
 
 function normalizeAuthError(error, source = 'main') {
   if (!error) {
@@ -27,12 +26,6 @@ export const login = async (email, password) => {
   })
 
   if (error) throw normalizeAuthError(error, 'main')
-  try {
-    await loginWhatsAppAdmin(email, password)
-  } catch (whatsAppError) {
-    await supabase.auth.signOut()
-    throw normalizeAuthError(whatsAppError, 'main')
-  }
 
   return data.user
 }
@@ -51,7 +44,6 @@ export const logout = async () => {
   await Promise.allSettled([
     supabase.auth.signOut(),
     supabaseInventory.auth.signOut(),
-    logoutWhatsAppAdmin(),
   ])
 }
 

@@ -14,7 +14,6 @@ const emit = defineEmits(["close"]);
 const route = useRoute();
 const openQuotesWorkspace = ref(true);
 const openSalesFollowUp = ref(true);
-const openWhatsAppWorkspace = ref(true);
 const openAircraftSales = ref(true);
 
 const mainLinks = [
@@ -45,18 +44,7 @@ const quoteLinks = [
 
 const quoteSectionActive = computed(() => route.path.startsWith("/quotes"));
 const salesSectionActive = computed(() => route.path === "/quotes/follow-up");
-const whatsAppSectionActive = computed(() => route.path.startsWith("/whatsapp"));
 const aircraftSalesSectionActive = computed(() => route.path.startsWith("/admin/aircraft-sales"));
-const whatsAppLinks = [
-  { to: "/whatsapp", label: "Resumen" },
-  { to: "/whatsapp/conversaciones", label: "Conversaciones" },
-  { to: "/whatsapp/cotizaciones", label: "Cotizaciones" },
-  { to: "/whatsapp/partes", label: "Partes y refacciones" },
-  { to: "/whatsapp/motores", label: "Motores" },
-  { to: "/whatsapp/soporte", label: "Atención / soporte" },
-  { to: "/whatsapp/asesores", label: "Solicitudes de asesor" },
-  { to: "/whatsapp/historial", label: "Historial" },
-];
 
 </script>
 
@@ -127,32 +115,6 @@ const whatsAppLinks = [
         <div v-if="openAircraftSales" class="submenu">
           <RouterLink
             v-for="link in aircraftSalesLinks"
-            :key="link.to"
-            :to="link.to"
-            class="nav-sublink"
-            @click="emit('close')"
-          >
-            {{ link.label }}
-          </RouterLink>
-        </div>
-      </div>
-
-      <div class="nav-section nav-section-quotes">
-        <button
-          class="section-toggle"
-          :class="{ active: whatsAppSectionActive }"
-          @click="openWhatsAppWorkspace = !openWhatsAppWorkspace"
-        >
-          <div class="nav-copy">
-            <strong>WhatsApp</strong>
-            <span>Conversaciones y solicitudes</span>
-          </div>
-          <span class="chevron">{{ openWhatsAppWorkspace ? "-" : "+" }}</span>
-        </button>
-
-        <div v-if="openWhatsAppWorkspace" class="submenu">
-          <RouterLink
-            v-for="link in whatsAppLinks"
             :key="link.to"
             :to="link.to"
             class="nav-sublink"
