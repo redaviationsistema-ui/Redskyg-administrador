@@ -21,13 +21,18 @@ const loading = ref(true);
 const creating = ref(false);
 const createOpen = ref(false);
 const dragged = ref(null);
-const filters = reactive({ status: "", search: "" });
+const filters = reactive({ status: "", search: "", document: "" });
 const form = reactive({ name: "", manufacturer: "", model: "", registration: "", price: null, currency: "USD", status: "ready_to_operate" });
 
 const proposedSlug = computed(() => buildAircraftSaleSlug(form.name, form.registration));
+const filteredAircraft = computed(() => {
+  if (filters.document === "with_pdf") return aircraft.value.filter((item) => Boolean(item.pdf_path));
+  if (filters.document === "without_pdf") return aircraft.value.filter((item) => !item.pdf_path);
+  return aircraft.value;
+});
 const grouped = computed(() => ({
-  ready_to_operate: aircraft.value.filter((item) => item.status === "ready_to_operate"),
-  out_of_service: aircraft.value.filter((item) => item.status === "out_of_service"),
+  ready_to_operate: filteredAircraft.value.filter((item) => item.status === "ready_to_operate"),
+  out_of_service: filteredAircraft.value.filter((item) => item.status === "out_of_service"),
 }));
 
 function money(value, currency = "USD") {
@@ -106,12 +111,13 @@ onMounted(load);
 
     <form class="filters" @submit.prevent="load">
       <select v-model="filters.status"><option value="">Todos</option><option value="ready_to_operate">Listos para operar</option><option value="out_of_service">Fuera de servicio</option></select>
+      <select v-model="filters.document"><option value="">Todos los documentos</option><option value="with_pdf">Con PDF</option><option value="without_pdf">Sin PDF</option></select>
       <input v-model.trim="filters.search" type="search" placeholder="Buscar por nombre, modelo o matricula">
       <BaseButton type="submit" :disabled="loading">Filtrar</BaseButton>
     </form>
 
     <section v-if="loading" class="aircraft-grid"><article v-for="n in 6" :key="n" class="aircraft-card skeleton" /></section>
-    <template v-else-if="aircraft.length">
+    <template v-else-if="filteredAircraft.length">
       <section v-for="status in ['ready_to_operate','out_of_service']" :key="status" class="status-section">
         <h2>{{ aircraftStatusLabels[status] }}</h2>
         <div v-if="grouped[status].length" class="aircraft-grid">
@@ -124,6 +130,7 @@ onMounted(load);
               <p>{{ item.registration }} · {{ item.model || item.manufacturer || "Sin modelo" }}</p>
               <strong>{{ money(item.price, item.currency) }}</strong>
               <p>{{ item.image_count }} imagenes</p>
+              <span class="document-badge" :class="{ missing: !item.pdf_path }">{{ item.pdf_path ? "PDF cargado" : "Sin PDF" }}</span>
               <label class="switch"><input type="checkbox" :checked="item.is_active" @change="toggle(item)"><span>{{ item.is_active ? "Publicado" : "Oculto" }}</span></label>
               <div class="actions"><button @click="router.push(`/admin/aircraft-sales/${item.slug}`)">Editar</button><button class="danger" @click="remove(item)">Eliminar</button></div>
             </div>
@@ -151,4 +158,5 @@ onMounted(load);
 
 <style scoped>
 .sales-page{display:grid;gap:22px}.page-header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}.page-header h1{margin:3px 0 5px;color:var(--text-strong);font-size:clamp(1.7rem,3vw,2.5rem)}.page-header p{margin:0;color:var(--text-muted)}.eyebrow{color:var(--primary)!important;font-size:.75rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.header-actions,.filters{display:flex;gap:10px;flex-wrap:wrap}.filters{align-items:center;padding:14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-surface-solid)}.filters input,.filters select,.create-form input,.create-form select,.create-form textarea{min-height:42px;border:1px solid var(--border-strong);border-radius:8px;background:var(--bg-soft);padding:10px;color:var(--text-main);font:inherit}.filters input{min-width:min(340px,100%)}.status-section{display:grid;gap:14px}.status-section h2{margin:0;color:var(--text-strong);font-size:1.1rem}.aircraft-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}.aircraft-card{overflow:hidden;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-surface-solid);box-shadow:var(--shadow-sm)}.cover{display:grid;place-items:center;width:100%;height:210px;padding:0;background:var(--bg-muted);color:var(--text-faint);cursor:pointer}.cover img{width:100%;height:100%;object-fit:cover}.card-body{display:grid;gap:8px;padding:16px}.title-row{display:flex;justify-content:space-between;gap:10px}.title-row h3{margin:0;font-size:1rem;color:var(--text-strong)}.drag{background:none;color:var(--text-faint);cursor:grab}.card-body p{margin:0;color:var(--text-muted);font-size:.86rem}.card-body strong{color:var(--text-strong)}.switch{display:flex;align-items:center;gap:8px;width:max-content;font-weight:700;font-size:.84rem}.switch input{width:18px}.actions{display:flex;justify-content:space-between;border-top:1px solid var(--border-color);padding-top:12px}.actions button{padding:0;background:none;color:var(--primary);font-weight:800;cursor:pointer}.actions .danger{color:var(--danger)}.empty,.empty-line{padding:24px;border:1px dashed var(--border-strong);border-radius:8px;background:var(--bg-surface);color:var(--text-muted);text-align:center}.skeleton{height:350px;background:linear-gradient(90deg,var(--bg-muted),var(--bg-soft),var(--bg-muted));background-size:200%;animation:pulse 1.2s infinite}@keyframes pulse{to{background-position:-200%}}.create-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.create-form label{display:grid;gap:7px;font-weight:700}.create-form p,.create-form>div{grid-column:1/-1}.create-form>div{display:flex;justify-content:flex-end;gap:10px}@media(max-width:1100px){.aircraft-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.page-header{align-items:stretch;flex-direction:column}.aircraft-grid,.create-form{grid-template-columns:1fr}}
+.document-badge{display:inline-flex;width:max-content;padding:4px 8px;border-radius:999px;background:rgba(22,163,74,.12);color:var(--success);font-size:.72rem;font-weight:800}.document-badge.missing{background:rgba(217,119,6,.12);color:#b45309}
 </style>

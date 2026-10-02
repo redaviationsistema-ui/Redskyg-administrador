@@ -9,6 +9,7 @@ create table if not exists public.aircraft_sales (
   currency text not null default 'USD',
   status text not null default 'ready_to_operate' check (status in ('ready_to_operate', 'out_of_service')),
   description text,
+  pdf_path text,
   is_active boolean not null default false,
   display_order integer not null default 0,
   created_at timestamptz not null default now(),
@@ -33,10 +34,23 @@ create table if not exists public.aircraft_sales_inquiries (
   email text,
   phone text,
   message text,
+  email_verified boolean not null default false,
+  email_status text not null default 'pending' check (email_status in ('pending', 'sent', 'failed')),
+  pdf_sent boolean not null default false,
+  pdf_sent_at timestamptz,
   status text not null default 'new' check (status in ('new', 'in_follow_up', 'answered', 'closed')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.aircraft_sales
+  add column if not exists pdf_path text;
+
+alter table public.aircraft_sales_inquiries
+  add column if not exists email_verified boolean not null default false,
+  add column if not exists email_status text not null default 'pending',
+  add column if not exists pdf_sent boolean not null default false,
+  add column if not exists pdf_sent_at timestamptz;
 
 create index if not exists aircraft_sales_active_order_idx on public.aircraft_sales(is_active, display_order);
 create index if not exists aircraft_sales_status_idx on public.aircraft_sales(status);
@@ -70,6 +84,10 @@ for each row execute function public.set_updated_at();
 
 insert into storage.buckets (id, name, public)
 values ('aircraft-sales', 'aircraft-sales', true)
+on conflict (id) do update set public = excluded.public;
+
+insert into storage.buckets (id, name, public)
+values ('aircraft-pdfs', 'aircraft-pdfs', false)
 on conflict (id) do update set public = excluded.public;
 
 alter table public.aircraft_sales enable row level security;
@@ -139,5 +157,13 @@ for all
 to authenticated
 using (bucket_id = 'aircraft-sales')
 with check (bucket_id = 'aircraft-sales');
+
+drop policy if exists "Authenticated can manage aircraft sales PDFs" on storage.objects;
+create policy "Authenticated can manage aircraft sales PDFs"
+on storage.objects
+for all
+to authenticated
+using (bucket_id = 'aircraft-pdfs')
+with check (bucket_id = 'aircraft-pdfs');
 
 notify pgrst, 'reload schema';

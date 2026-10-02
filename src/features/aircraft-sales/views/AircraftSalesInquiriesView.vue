@@ -24,6 +24,14 @@ function money(value, currency = "USD") {
   return amount.toLocaleString("en-US", { style: "currency", currency, maximumFractionDigits: 0 });
 }
 
+function booleanLabel(value, yes = "Si", no = "No") {
+  return value ? yes : no;
+}
+
+function emailStatusLabel(value) {
+  return ({ pending: "Pendiente", sent: "Enviado", failed: "Error" })[value] || "-";
+}
+
 async function load() {
   loading.value = true;
   setupError.value = "";
@@ -68,12 +76,14 @@ onMounted(load);
       <p v-if="loading" class="empty">Cargando solicitudes...</p>
       <p v-else-if="setupError" class="setup-error">{{ setupError }}</p>
       <p v-else-if="!inquiries.length" class="empty">No hay solicitudes registradas.</p>
-      <div v-else class="table-scroll"><table><thead><tr><th>Aeronave</th><th>Cliente</th><th>Correo</th><th>Telefono</th><th>Fecha</th><th>Estado</th><th>Acciones</th></tr></thead><tbody><tr v-for="item in inquiries" :key="item.id"><td><strong>{{ item.aircraft_sales?.name || "-" }}</strong><small>{{ item.aircraft_sales?.registration || "-" }}</small></td><td>{{ item.name || "-" }}</td><td>{{ item.email || "-" }}</td><td>{{ item.phone || "-" }}</td><td>{{ date(item.created_at) }}</td><td><span class="badge">{{ inquiryStatusLabels[item.status] || item.status }}</span></td><td><button class="link-button" @click="selected=item">Ver</button><button class="danger-link" @click="remove(item)">Eliminar</button></td></tr></tbody></table></div>
+      <div v-else class="table-scroll"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Aeronave</th><th>Correo</th><th>Verificado</th><th>PDF</th><th>Email</th><th>Estado</th><th>Acciones</th></tr></thead><tbody><tr v-for="item in inquiries" :key="item.id"><td>{{ date(item.created_at) }}</td><td><strong>{{ item.name || "-" }}</strong><small>{{ item.phone || "-" }}</small></td><td><strong>{{ item.aircraft_sales?.name || "-" }}</strong><small>{{ item.aircraft_sales?.registration || "-" }}</small></td><td>{{ item.email || "-" }}</td><td><span class="badge" :class="{ warning: !item.email_verified }">{{ item.email_verified ? "Verificado" : "No verificado" }}</span></td><td><span class="badge" :class="{ warning: !item.pdf_sent }">{{ item.pdf_sent ? "Enviado" : "Pendiente" }}</span></td><td>{{ emailStatusLabel(item.email_status) }}</td><td><span class="badge">{{ inquiryStatusLabels[item.status] || item.status }}</span></td><td><button class="link-button" @click="selected=item">Ver</button><button class="danger-link" @click="remove(item)">Eliminar</button></td></tr></tbody></table></div>
     </section>
     <BaseModal :open="Boolean(selected)" title="Detalle de solicitud" max-width="760px" @close="selected=null">
       <section v-if="selected" class="detail">
         <div><span>Aeronave</span><strong>{{ selected.aircraft_sales?.name || "-" }}</strong><p>{{ selected.aircraft_sales?.registration || "-" }} · {{ money(selected.aircraft_sales?.price, selected.aircraft_sales?.currency) }}</p></div>
         <div><span>Solicitante</span><strong>{{ selected.name || "-" }}</strong><p>{{ selected.email || "-" }} · {{ selected.phone || "-" }}</p></div>
+        <div><span>Correo verificado</span><strong>{{ booleanLabel(selected.email_verified) }}</strong><p>{{ emailStatusLabel(selected.email_status) }}</p></div>
+        <div><span>PDF</span><strong>{{ selected.pdf_sent ? "Enviado" : "Pendiente" }}</strong><p>{{ selected.pdf_sent_at ? date(selected.pdf_sent_at) : (selected.aircraft_sales?.pdf_path ? "Documento disponible" : "Aeronave sin PDF") }}</p></div>
         <div class="wide"><span>Mensaje</span><p>{{ selected.message || "-" }}</p></div>
         <label><span>Estado</span><select :value="selected.status" :disabled="saving" @change="changeStatus($event.target.value)"><option v-for="item in INQUIRY_STATUSES" :key="item" :value="item">{{ inquiryStatusLabels[item] }}</option></select></label>
       </section>

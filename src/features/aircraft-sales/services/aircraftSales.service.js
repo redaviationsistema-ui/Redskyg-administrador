@@ -1,9 +1,10 @@
 import { supabase } from "@/supabase";
-import { buildAircraftSaleSlug } from "../utils/aircraftSalesFileValidation";
+import { buildAircraftSaleSlug, slugifyAircraftSale, validateAircraftSalesPdf } from "../utils/aircraftSalesFileValidation";
 
 export { buildAircraftSaleSlug } from "../utils/aircraftSalesFileValidation";
 
 const BUCKET = "aircraft-sales";
+const PDF_BUCKET = "aircraft-pdfs";
 const AIRCRAFT = "aircraft_sales";
 const IMAGES = "aircraft_sales_images";
 const INQUIRIES = "aircraft_sales_inquiries";
@@ -26,6 +27,16 @@ export const inquiryStatusLabels = Object.freeze({
 
 function isMissingTableError(error) {
   return error?.code === "42P01" || error?.status === 404 || /aircraft_sales_inquiries|schema cache|not found/i.test(error?.message || "");
+}
+
+function normalizeStoragePath(path = "") {
+  return String(path || "").replace(/^\/+/, "");
+}
+
+function safePdfFileName(aircraft, file) {
+  const original = String(file?.name || "").replace(/\.pdf$/i, "");
+  const base = slugifyAircraftSale([aircraft.registration, aircraft.name || aircraft.model || original || Date.now()].filter(Boolean).join("-"));
+  return `${base || Date.now()}.pdf`;
 }
 
 export function getAircraftSaleImageUrl(path) {
@@ -243,14 +254,70 @@ export async function deleteAircraft(aircraft) {
     const { error: storageError } = await supabase.storage.from(BUCKET).remove(paths);
     if (storageError) throw storageError;
   }
+  if (aircraft.pdf_path) {
+    await supabase.storage.from(PDF_BUCKET).remove([normalizeStoragePath(aircraft.pdf_path)]);
+  }
   const { error } = await supabase.from(AIRCRAFT).delete().eq("id", aircraft.id);
   if (error) throw error;
+}
+
+export async function uploadAircraftPdf(aircraft, file) {
+  const validationError = validateAircraftSalesPdf(file);
+  if (validationError) throw new Error(validationError);
+
+  const path = `${aircraft.id}/${Date.now()}-${safePdfFileName(aircraft, file)}`;
+  const { data, error: uploadError } = await supabase.storage.from(PDF_BUCKET).upload(path, file, {
+    cacheControl: "3600",
+    contentType: "application/pdf",
+    upsert: false,
+  });
+  if (uploadError) throw uploadError;
+
+  const storedPath = data?.path || path;
+  const previousPath = normalizeStoragePath(aircraft.pdf_path);
+  const { data: updated, error: updateError } = await supabase
+    .from(AIRCRAFT)
+    .update({ pdf_path: storedPath })
+    .eq("id", aircraft.id)
+    .select()
+    .single();
+
+  if (updateError) {
+    await supabase.storage.from(PDF_BUCKET).remove([storedPath]).catch(() => {});
+    throw updateError;
+  }
+
+  if (previousPath && previousPath !== storedPath) {
+    await supabase.storage.from(PDF_BUCKET).remove([previousPath]).catch(() => {});
+  }
+
+  return normalizeAircraft(updated);
+}
+
+export async function deleteAircraftPdf(aircraft) {
+  const pdfPath = normalizeStoragePath(aircraft.pdf_path);
+  if (pdfPath) {
+    const { error: storageError } = await supabase.storage.from(PDF_BUCKET).remove([pdfPath]);
+    if (storageError) throw storageError;
+  }
+
+  const { data, error } = await supabase.from(AIRCRAFT).update({ pdf_path: null }).eq("id", aircraft.id).select().single();
+  if (error) throw error;
+  return normalizeAircraft(data);
+}
+
+export async function createAircraftPdfSignedUrl(pdfPath, expiresIn = 600) {
+  const path = normalizeStoragePath(pdfPath);
+  if (!path) return "";
+  const { data, error } = await supabase.storage.from(PDF_BUCKET).createSignedUrl(path, expiresIn);
+  if (error) throw error;
+  return data?.signedUrl || "";
 }
 
 export async function listAircraftInquiries(status = "") {
   let query = supabase
     .from(INQUIRIES)
-    .select("*, aircraft_sales(name, registration, price, currency, slug)")
+    .select("*, aircraft_sales(name, registration, price, currency, slug, status, pdf_path)")
     .order("created_at", { ascending: false });
   if (status) query = query.eq("status", status);
   const { data, error } = await query;
@@ -267,7 +334,7 @@ export async function listAircraftInquiries(status = "") {
 export async function getAircraftInquiry(id) {
   const { data, error } = await supabase
     .from(INQUIRIES)
-    .select("*, aircraft_sales(name, registration, price, currency, slug)")
+    .select("*, aircraft_sales(name, registration, price, currency, slug, status, pdf_path)")
     .eq("id", id)
     .single();
   if (error) throw error;

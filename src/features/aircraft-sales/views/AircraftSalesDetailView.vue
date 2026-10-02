@@ -7,6 +7,8 @@ import { useFeedback } from "@/composables/useFeedback";
 import AircraftSalesUploader from "../components/AircraftSalesUploader.vue";
 import {
   aircraftStatusLabels,
+  createAircraftPdfSignedUrl,
+  deleteAircraftPdf,
   getAircraftBySlug,
   listAircraftImages,
   reorderAircraftImages,
@@ -15,6 +17,7 @@ import {
   setAircraftImageActive,
   updateAircraft,
   deleteAircraftImage,
+  uploadAircraftPdf,
 } from "../services/aircraftSales.service";
 
 const props = defineProps({ slug: { type: String, required: true } });
@@ -25,6 +28,9 @@ const images = ref([]);
 const loading = ref(true);
 const saving = ref(false);
 const uploadOpen = ref(false);
+const pdfInput = ref(null);
+const pdfBusy = ref(false);
+const pdfStatus = ref("");
 const preview = ref(null);
 const dragged = ref(null);
 const form = reactive({ name: "", manufacturer: "", model: "", registration: "", price: null, currency: "USD", status: "ready_to_operate", description: "", is_active: false });
@@ -82,6 +88,53 @@ async function uploaded() {
   uploadOpen.value = false;
   images.value = await listAircraftImages(aircraft.value.id);
   feedback.notify("Imagenes agregadas");
+}
+
+function choosePdf() {
+  pdfInput.value?.click();
+}
+
+async function uploadPdf(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file || !aircraft.value) return;
+  pdfBusy.value = true;
+  pdfStatus.value = "Subiendo...";
+  try {
+    aircraft.value = await uploadAircraftPdf(aircraft.value, file);
+    fillForm(aircraft.value);
+    pdfStatus.value = "Documento cargado correctamente.";
+    feedback.notify("Documento cargado correctamente");
+  } catch (error) {
+    pdfStatus.value = "Error al subir";
+    feedback.error("No se pudo guardar el PDF", error);
+  } finally {
+    pdfBusy.value = false;
+  }
+}
+
+async function viewPdf() {
+  if (!aircraft.value?.pdf_path) return;
+  pdfBusy.value = true;
+  try {
+    const signedUrl = await createAircraftPdfSignedUrl(aircraft.value.pdf_path);
+    window.open(signedUrl, "_blank", "noopener,noreferrer");
+  } catch (error) { feedback.error("No se pudo abrir el PDF", error); }
+  finally { pdfBusy.value = false; }
+}
+
+async function removePdf() {
+  if (!aircraft.value?.pdf_path) return;
+  const result = await feedback.confirm({ title: "Eliminar documento", text: `Deseas eliminar el documento asociado a ${aircraft.value.name} - ${aircraft.value.registration}?`, confirmButtonText: "Eliminar", cancelButtonText: "Cancelar", icon: "warning", confirmButtonColor: "#c62828" });
+  if (!result.isConfirmed) return;
+  pdfBusy.value = true;
+  try {
+    aircraft.value = await deleteAircraftPdf(aircraft.value);
+    fillForm(aircraft.value);
+    pdfStatus.value = "Documento eliminado.";
+    feedback.notify("Documento eliminado");
+  } catch (error) { feedback.error("No se pudo eliminar el PDF", error); }
+  finally { pdfBusy.value = false; }
 }
 
 async function cover(image) {
@@ -159,6 +212,23 @@ onMounted(load);
         </div>
       </section>
 
+      <section class="document-panel">
+        <div class="section-head"><div><h2>Documentacion comercial</h2><p>{{ aircraft.registration }}</p></div></div>
+        <input ref="pdfInput" class="hidden-input" type="file" accept="application/pdf" @change="uploadPdf">
+        <div class="document-box">
+          <div>
+            <span class="document-state" :class="{ missing: !aircraft.pdf_path }">{{ aircraft.pdf_path ? "PDF cargado" : "Sin PDF" }}</span>
+            <strong>{{ aircraft.pdf_path ? aircraft.pdf_path.split('/').pop() : "Documento comercial" }}</strong>
+            <p>{{ pdfStatus || (aircraft.pdf_path ? "Disponible mediante URL firmada temporal." : "Sube el PDF comercial asociado a esta aeronave.") }}</p>
+          </div>
+          <div class="document-actions">
+            <BaseButton v-if="aircraft.pdf_path" variant="secondary" :disabled="pdfBusy" @click="viewPdf">Ver PDF</BaseButton>
+            <BaseButton :disabled="pdfBusy" @click="choosePdf">{{ aircraft.pdf_path ? "Reemplazar PDF" : "Subir PDF" }}</BaseButton>
+            <BaseButton v-if="aircraft.pdf_path" variant="secondary" :disabled="pdfBusy" @click="removePdf">Eliminar PDF</BaseButton>
+          </div>
+        </div>
+      </section>
+
       <section class="gallery-panel">
         <div class="section-head"><div><h2>Imagenes de la aeronave</h2><p>{{ imageCountLabel }}</p></div><BaseButton @click="uploadOpen=true">+ Subir imagenes</BaseButton></div>
         <div v-if="images.length" class="image-grid">
@@ -178,4 +248,5 @@ onMounted(load);
 
 <style scoped>
 .detail-page{display:grid;gap:20px}.back{width:max-content;padding:0;background:none;color:var(--primary);font-weight:800;cursor:pointer}.page-header,.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}.page-header h1{margin:3px 0 5px;color:var(--text-strong);font-size:clamp(1.7rem,3vw,2.5rem)}.page-header p,.section-head p{margin:0;color:var(--text-muted)}.eyebrow{color:var(--primary)!important;font-size:.75rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.header-actions{display:flex;gap:10px;flex-wrap:wrap}.form-panel,.gallery-panel,.state-box{padding:18px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-surface-solid);box-shadow:var(--shadow-sm)}.form-panel h2,.gallery-panel h2{margin:0 0 14px;color:var(--text-strong)}.form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.form-grid label{display:grid;gap:7px;color:var(--text-muted);font-size:.82rem;font-weight:800}.form-grid input,.form-grid select,.form-grid textarea{width:100%;border:1px solid var(--border-strong);border-radius:8px;background:var(--bg-soft);padding:11px;color:var(--text-main);font:inherit}.published{align-content:end}.published input{width:auto}.full{grid-column:1/-1}.image-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:16px}.image-card{overflow:hidden;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-surface-solid)}.photo{position:relative;width:100%;height:210px;padding:0;background:var(--bg-muted);cursor:zoom-in}.photo img{width:100%;height:100%;object-fit:cover}.photo span{position:absolute;top:10px;left:10px;padding:5px 9px;border-radius:999px;background:var(--primary);color:#fff;font-size:.72rem;font-weight:800}.image-visible{display:flex;align-items:center;gap:7px;width:max-content;padding:10px 12px 0;color:var(--success);font-size:.82rem;font-weight:800}.image-visible input{width:18px}.image-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px;padding:12px}.image-actions button{padding:0;background:none;color:var(--primary);font-size:.78rem;font-weight:800;cursor:pointer}.image-actions button:disabled{color:var(--success);cursor:default}.image-actions .danger{color:var(--danger)}.image-actions span{margin-left:auto;color:var(--text-faint);cursor:grab}.empty{display:grid;place-items:center;gap:14px;min-height:260px;margin-top:16px;padding:30px;border:1px dashed var(--border-strong);border-radius:8px;background:var(--bg-surface);color:var(--text-muted)}.preview{display:block;max-height:72vh;margin:auto;border-radius:8px;object-fit:contain}@media(max-width:1100px){.form-grid,.image-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.page-header,.section-head{align-items:stretch;flex-direction:column}.form-grid,.image-grid{grid-template-columns:1fr}}
+.document-panel{padding:18px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-surface-solid);box-shadow:var(--shadow-sm)}.document-panel h2{margin:0 0 4px;color:var(--text-strong)}.hidden-input{display:none}.document-box{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-soft)}.document-box strong{display:block;margin-top:8px;color:var(--text-strong);word-break:break-word}.document-box p{margin:5px 0 0;color:var(--text-muted)}.document-state{display:inline-flex;padding:4px 8px;border-radius:999px;background:rgba(22,163,74,.12);color:var(--success);font-size:.74rem;font-weight:800}.document-state.missing{background:rgba(217,119,6,.12);color:#b45309}.document-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}@media(max-width:640px){.document-box{align-items:stretch;flex-direction:column}.document-actions{justify-content:flex-start}}
 </style>
